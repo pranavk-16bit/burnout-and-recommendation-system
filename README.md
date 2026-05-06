@@ -91,6 +91,46 @@ This baseline model establishes a starting point. Future improvements will focus
 
 ---
 
+
+## 🚀 Day 2 Progress
+
+### 🔹 Exploratory Data Analysis (EDA)
+- Analyzed dataset structure using:
+  - head()
+  - info()
+  - describe()
+  - value_counts()
+
+### 🔹 Preprocessing Improvements
+- Removed unnecessary columns
+- Applied ordinal encoding for ordered categorical features
+- Applied one-hot encoding for nominal categorical features
+- Added feature scaling using StandardScaler
+
+### 🔹 Model Comparison
+Implemented and compared:
+- Logistic Regression
+- Random Forest Classifier
+
+### 🔹 Evaluation Metrics
+Used:
+- Accuracy Score
+- Classification Report
+- Confusion Matrix
+
+### 🔹 Feature Importance Analysis
+Identified key behavioral factors influencing burnout prediction:
+- CGPA
+- Attendance Percentage
+- Screen Time
+- Study Hours
+- Sleep Hours
+
+### 🔹 Key Learning
+- Understood importance of preprocessing and feature engineering
+- Learned differences between linear and ensemble models
+- Identified limitations of synthetic burnout datasets
+
 ## 👨‍💻 Author
 
 Pranav K
