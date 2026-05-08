@@ -330,6 +330,85 @@ instead of blindly optimizing accuracy.
 ✅ Model Exporting with Joblib  
 ✅ Feature Importance Analysis  
 
+# 🚀 Day 4 Progress
+
+## 🔹 Burnout Severity Monitoring System
+
+Implemented a human-readable burnout severity analysis system using behavioral risk scoring.
+
+### Severity Levels
+
+* Low Risk
+* Moderate Risk
+* High Risk
+
+The system now behaves more like a monitoring and decision-support application rather than only a machine learning classifier.
+
+---
+
+## 🔹 Severity-Based Recommendation Engine
+
+Upgraded static recommendations into dynamic intervention plans based on severity level.
+
+### Example Actions
+
+* Reduce study overload
+* Improve sleep schedule
+* Schedule regular breaks
+* Maintain balanced routines
+* Reduce unnecessary screen time
+
+This improved the practical usability of the project significantly.
+
+---
+
+## 🔹 SHAP Explainability Integration
+
+Integrated SHAP (SHapley Additive Explanations) for advanced model interpretability.
+
+### Added:
+
+* SHAP feature importance visualization
+* Model transparency
+* Feature impact analysis
+
+This helps explain:
+
+* why predictions happen
+* which features influence burnout most
+* how behavioral indicators affect model output
+
+---
+
+## 🔹 Visualization & Portfolio Improvements
+
+Added automatic saving of all generated plots into a dedicated visuals folder.
+
+### Saved Visualizations
+
+* SHAP Feature Importance
+* Burnout Severity Distribution
+* Feature Correlation Heatmap
+* Mental Health Distribution
+* Model Accuracy Comparison
+* Screen Time Trend Analysis
+* Feature Importance Rankings
+
+---
+
+## 🔹 Key Learning
+
+Day 4 focused less on chasing accuracy and more on:
+
+* explainability
+* system intelligence
+* decision support
+* behavioral interpretation
+* AI transparency
+
+This reflects a more realistic real-world machine learning workflow.
+
+
 ## 👨‍💻 Author
 
 Pranav K
