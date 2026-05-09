@@ -1,0 +1,693 @@
+# =========================================================
+# STUDENT BURNOUT DETECTION SYSTEM
+# CLEAN + OPTIMIZED + HIGHER ACCURACY VERSION
+# =========================================================
+
+import os
+import warnings
+import joblib
+import shap
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import (
+    RandomForestClassifier,
+    GradientBoostingClassifier
+)
+
+# =========================================================
+# SETTINGS
+# =========================================================
+
+warnings.filterwarnings("ignore")
+
+os.makedirs("visuals", exist_ok=True)
+
+sns.set_theme(
+    style="whitegrid",
+    palette="flare",
+    context="talk"
+)
+
+plt.rcParams["figure.figsize"] = (10,6)
+
+# =========================================================
+# LOAD DATA
+# =========================================================
+
+df = pd.read_csv(
+    r"C:\Users\prana\Downloads\student_mental_health_burnout_1M.csv"
+).sample(50000,           # use 100k rows instead of 1M
+    random_state=42
+)
+
+print(f"\nDataset Shape: {df.shape}")
+
+# =========================================================
+# PREPROCESSING
+# =========================================================
+
+df.columns = df.columns.str.lower()
+
+df["risk_level"] = df["risk_level"].map({
+    "Low":0,
+    "Medium":1,
+    "High":2
+})
+
+df = pd.get_dummies(
+    df,
+    columns=["gender"],
+    drop_first=True
+)
+
+# =========================================================
+# FEATURE ENGINEERING
+# =========================================================
+
+df["stress_sleep_ratio"] = (
+    df["stress_level"] /
+    (df["sleep_hours"] + 1)
+)
+
+df["mental_pressure"] = (
+    df["anxiety_score"] +
+    df["depression_score"] +
+    df["exam_pressure"]
+)
+
+df["wellness_score"] = (
+    df["physical_activity"] +
+    df["social_support"] -
+    df["stress_level"]
+)
+
+df["digital_overload"] = (
+    df["screen_time"] *
+    df["internet_usage"]
+)
+
+# =========================================================
+# FEATURES & TARGET
+# =========================================================
+
+X = df.drop([
+    "risk_level",
+    "burnout_score",
+    "mental_health_index",
+    "dropout_risk"
+], axis=1)
+
+y = df["risk_level"]
+
+# =========================================================
+# TRAIN TEST SPLIT
+# =========================================================
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    stratify=y,
+    random_state=42
+)
+
+X_train = X_train.astype("float32")
+X_test = X_test.astype("float32")
+# =========================================================
+# SCALING
+# =========================================================
+
+scaler = StandardScaler()
+
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# =========================================================
+# MODELS
+# =========================================================
+
+models = {
+
+    "Logistic Regression": (
+        LogisticRegression(
+            max_iter=3000,
+            class_weight="balanced"
+        ),
+        True
+    ),
+
+    "Random Forest": (
+    RandomForestClassifier(
+    n_estimators=60,
+    max_depth=10,
+    n_jobs=-1,
+    random_state=42
+),
+    False
+),
+
+    "Gradient Boosting": (
+    GradientBoostingClassifier(
+    n_estimators=40,
+    learning_rate=0.1,
+    max_depth=2,
+    random_state=42
+),
+    False
+)}
+
+
+
+
+# =========================================================
+# TRAINING
+# =========================================================
+
+results = {}
+
+for name, (model, scaled) in models.items():
+
+    train_x, test_x = (
+        (X_train_scaled, X_test_scaled)
+        if scaled else
+        (X_train, X_test)
+    )
+
+    pred = model.fit(
+        train_x,
+        y_train
+    ).predict(test_x)
+
+    acc = accuracy_score(y_test, pred)
+
+    results[name] = acc
+
+    print(f"{name:<22}: {acc:.4f}")
+
+# =========================================================
+# BEST MODEL
+# =========================================================
+
+best_model_name = max(results, key=results.get)
+
+best_model = models[best_model_name][0]
+
+print(f"\nBest Model : {best_model_name}")
+
+joblib.dump(
+    best_model,
+    "burnout_model.pkl"
+)
+
+# =========================================================
+# FEATURE IMPORTANCE
+# =========================================================
+
+if hasattr(best_model, "feature_importances_"):
+
+    importance_df = pd.DataFrame({
+
+        "Feature": X.columns,
+
+        "Importance":
+            best_model.feature_importances_
+
+    }).sort_values(
+        by="Importance",
+        ascending=False
+    )
+
+    top_features = importance_df.head(10)
+
+    importance_df.to_csv(
+        "feature_importance.csv",
+        index=False
+    )
+
+# =========================================================
+# REUSABLE PREDICTION FUNCTION
+# =========================================================
+
+def predict_student(student_data):
+
+    input_df = pd.DataFrame([student_data])
+
+    # Add missing columns automatically
+    for col in X.columns:
+
+        if col not in input_df.columns:
+            input_df[col] = 0
+
+    # Keep exact training column order
+    input_df = input_df[X.columns]
+
+    prediction = best_model.predict(input_df)[0]
+
+    probability = (
+        best_model
+        .predict_proba(input_df)
+        .max() * 100
+    )
+
+    labels = {
+        0: "Low",
+        1: "Medium",
+        2: "High"
+    }
+
+    return labels[prediction], probability
+# =========================================================
+# STUDENT ANALYSIS
+# =========================================================
+
+sample = X_test.iloc[0]
+
+pred = best_model.predict(
+    X_test.iloc[[0]]
+)[0]
+
+confidence = (
+    best_model
+    .predict_proba(X_test.iloc[[0]])
+    .max() * 100
+)
+
+labels = {
+    0:"Low",
+    1:"Medium",
+    2:"High"
+}
+
+risk_score = (
+
+    sample["mental_pressure"] * 0.4 +
+
+    sample["stress_level"] * 2 +
+
+    sample["screen_time"] -
+
+    sample["sleep_hours"]
+)
+
+severity = (
+    "Low Risk" if risk_score < 8 else
+    "Moderate Risk" if risk_score < 15 else
+    "High Risk"
+)
+
+print("\n" + "="*45)
+print("STUDENT BURNOUT ANALYSIS")
+print("="*45)
+
+print(f"Prediction : {labels[pred]}")
+print(f"Confidence : {confidence:.2f}%")
+print(f"Risk Score : {risk_score:.2f}")
+print(f"Severity   : {severity}")
+
+# =========================================================
+# SMART INSIGHTS
+# =========================================================
+
+checks = {
+
+    "⚠ High Screen Time":
+        sample["screen_time"] > 8,
+
+    "⚠ Poor Sleep":
+        sample["sleep_hours"] < 6,
+
+    "⚠ High Stress":
+        sample["stress_level"] > 7,
+
+    "⚠ Low Wellness":
+        sample["wellness_score"] < 3
+}
+
+print("\nRisk Factors")
+
+[print(k) for k,v in checks.items() if v]
+
+# =========================================================
+# RECOMMENDATIONS
+# =========================================================
+
+recommendations = {
+
+    "✔ Reduce screen time":
+        sample["screen_time"] > 8,
+
+    "✔ Improve sleep":
+        sample["sleep_hours"] < 6,
+
+    "✔ Meditation / Exercise":
+        sample["stress_level"] > 7,
+
+    "✔ Increase social activity":
+        sample["wellness_score"] < 3
+}
+
+print("\nRecommendations")
+
+[print(k) for k,v in recommendations.items() if v]
+# =========================================================
+# SHAP EXPLAINABILITY
+# =========================================================
+
+try:
+
+    rf_model = models["Random Forest"][0]
+
+    sample_shap = X_test.sample(
+        80,
+        random_state=42
+    )
+
+    explainer = shap.TreeExplainer(rf_model)
+
+    shap_values = explainer.shap_values(sample_shap)
+
+    plt.figure(figsize=(10,6))
+
+    # multiclass fix
+    if isinstance(shap_values, list):
+
+        shap.summary_plot(
+            shap_values[1],   # Medium risk class
+            sample_shap,
+            plot_type="bar",
+            show=False
+        )
+
+    else:
+
+        shap.summary_plot(
+            shap_values,
+            sample_shap,
+            plot_type="bar",
+            show=False
+        )
+
+    plt.title(
+        "SHAP Feature Importance",
+        fontsize=18,
+        weight="bold"
+    )
+
+    plt.tight_layout()
+
+    plt.savefig(
+        "visuals/shap_summary.png",
+        dpi=300,
+        bbox_inches="tight"
+    )
+
+    plt.show()
+
+except Exception as e:
+
+    print("\nSHAP Error:", e)
+    print("Skipping SHAP visualization...")
+
+# =========================================================
+# SAVE PLOT FUNCTION
+# =========================================================
+
+def save_plot(title, file):
+
+    plt.title(
+        title,
+        fontsize=18,
+        weight="bold"
+    )
+
+    plt.tight_layout()
+
+    plt.savefig(
+        f"visuals/{file}.png",
+        dpi=300
+    )
+
+    plt.show()
+
+    plt.close()
+
+# =========================================================
+# MODEL COMPARISON
+# =========================================================
+
+plt.figure(figsize=(8,5))
+
+ax = sns.barplot(
+    x=list(results.keys()),
+    y=list(results.values()),
+    palette="magma"
+)
+
+for i, v in enumerate(results.values()):
+
+    ax.text(
+        i,
+        v + 0.01,
+        f"{v:.2f}",
+        ha="center",
+        fontweight="bold"
+    )
+
+plt.ylim(0,1)
+
+save_plot(
+    "Model Accuracy Comparison",
+    "model_comparison"
+)
+
+# =========================================================
+# FEATURE IMPORTANCE
+# =========================================================
+
+if hasattr(best_model, "feature_importances_"):
+
+    plt.figure(figsize=(12,6))
+
+    sns.barplot(
+        data=top_features,
+        x="Importance",
+        y="Feature",
+        palette="viridis"
+    )
+
+    save_plot(
+        "Top Burnout Indicators",
+        "feature_importance"
+    )
+
+# =========================================================
+# MENTAL HEALTH DISTRIBUTION
+# =========================================================
+
+plt.figure(figsize=(10,6))
+
+sns.kdeplot(
+    data=df,
+    x="mental_health_index",
+    fill=True,
+    linewidth=3,
+    color="#00E5FF"
+)
+
+save_plot(
+    "Mental Health Distribution",
+    "mental_health_distribution"
+)
+
+# =========================================================
+# SCREEN TIME TREND
+# =========================================================
+
+trend = df.sample(
+    2000,
+    random_state=42
+)
+
+plt.figure(figsize=(10,6))
+
+sns.scatterplot(
+    data=trend,
+    x="mental_health_index",
+    y="screen_time",
+    alpha=0.4
+)
+
+save_plot(
+    "Mental Health vs Screen Time",
+    "screen_time_trend"
+)
+
+# =========================================================
+# CORRELATION HEATMAP
+# =========================================================
+
+important_cols = [
+
+    "mental_health_index",
+    "stress_sleep_ratio",
+    "wellness_score",
+    "screen_time",
+    "sleep_hours",
+    "stress_level",
+    "risk_level"
+]
+
+plt.figure(figsize=(10,7))
+
+sns.heatmap(
+    df[important_cols].corr(),
+    cmap="coolwarm",
+    annot=True,
+    fmt=".2f",
+    linewidths=0.5
+)
+
+save_plot(
+    "Key Feature Correlation",
+    "correlation_heatmap"
+)
+
+# =========================================================
+# BURNOUT PIE CHART
+# =========================================================
+
+plt.figure(figsize=(7,7))
+
+risk_labels = (
+    df["risk_level"]
+    .map({
+        0:"Low",
+        1:"Medium",
+        2:"High"
+    })
+)
+
+risk_labels.value_counts().plot.pie(
+    autopct="%1.1f%%",
+    colors=sns.color_palette("Set2")
+)
+
+plt.ylabel("")
+
+save_plot(
+    "Burnout Severity Distribution",
+    "severity_distribution"
+)
+
+# =========================================================
+# DEMO PREDICTION
+# =========================================================
+
+demo_student = {
+
+    "age": 21,
+    "academic_year": 3,
+    "study_hours_per_day": 9,
+    "screen_time": 10,
+    "social_support": 2,
+    "sleep_hours": 4,
+    "exercise_frequency": 1,
+    "stress_level": 9,
+    "anxiety_score": 8,
+    "depression_score": 7,
+    "mental_health_index": 4,
+    "exam_pressure": 9,
+    "internet_usage": 8,
+    "physical_activity": 1,
+    "financial_stress": 6,
+    "family_expectation": 8,
+    "academic_performance": 6,
+
+    "gender_Male": 1,
+
+    # engineered features
+    "stress_sleep_ratio": 1.8,
+    "mental_pressure": 24,
+    "wellness_score": -2,
+    "digital_overload": 80
+}
+
+demo_pred, demo_conf = predict_student(
+    demo_student
+)
+
+print("\n" + "="*45)
+print("DEMO STUDENT RESULT")
+print("="*45)
+
+print(f"Predicted Burnout : {demo_pred}")
+print(f"Confidence        : {demo_conf:.2f}%")
+
+# =========================================================
+# FINAL REPORT GENERATOR
+# =========================================================
+
+def generate_report(prediction, confidence):
+
+    print("\n" + "="*45)
+    print("FINAL BURNOUT REPORT")
+    print("="*45)
+
+    print(f"Burnout Level : {prediction}")
+    print(f"Confidence    : {confidence:.2f}%")
+
+    if prediction == "High":
+
+        print("\n🚨 Student requires immediate attention")
+        print("✔ Academic workload reduction advised")
+        print("✔ Sleep recovery strongly recommended")
+
+    elif prediction == "Medium":
+
+        print("\n⚠ Moderate burnout indicators detected")
+        print("✔ Stress management recommended")
+        print("✔ Maintain healthier study balance")
+
+    else:
+
+        print("\n✅ Student appears mentally stable")
+        print("✔ Continue healthy lifestyle habits")
+
+
+generate_report(
+    demo_pred,
+    demo_conf
+)
+
+
+# =========================================================
+# WEEKLY TREND
+# =========================================================
+
+weekly_scores = [5, 7, 8, 11, 14]
+
+plt.figure(figsize=(8,5))
+
+plt.plot(
+    weekly_scores,
+    marker="o",
+    linewidth=3
+)
+
+plt.xlabel("Week")
+plt.ylabel("Burnout Score")
+
+save_plot(
+    "Weekly Burnout Trend",
+    "burnout_trend"
+)
+
+print("\nVisuals saved inside visuals/")
+print("Model saved as burnout_model.pkl")
+
