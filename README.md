@@ -508,6 +508,43 @@ AI-Powered Student Burnout Monitoring & Recommendation System
 > Real-world value comes from interpretability, usability, explainability, monitoring, and actionable recommendations.
 
 
+
+
+# 🚀 Day 6 Progress
+
+## 🔹 Interactive Console-Based Prediction System
+- Built a real-time user input system using Python console interaction
+- Users can now enter:
+  - Study hours
+  - Sleep hours
+  - Screen time
+  - Stress level
+  - Anxiety score
+  - Depression score
+  - Social support score
+- System performs live burnout prediction instantly
+
+---
+
+## 🔹 AI-Based Burnout Report Generation
+- Added automated report export system
+- Generated reports are saved inside:
+  - `reports/student_report.txt`
+
+### Report Includes:
+- Predicted burnout level
+- Confidence score
+- Burnout severity analysis
+- Personalized recommendations
+
+---
+
+## 🔹 Improved System Architecture
+
+Project structure upgraded for maintainability and scalability:
+
+
+
 ## 👨‍💻 Author
 
 Pranav K
