@@ -20,6 +20,9 @@ from sklearn.ensemble import (
     GradientBoostingClassifier
 )
 
+os.makedirs("reports", exist_ok=True)
+os.makedirs("models", exist_ok=True)
+
 # =========================================================
 # SETTINGS
 # =========================================================
@@ -198,13 +201,12 @@ best_model_name = max(results, key=results.get)
 
 best_model = models[best_model_name][0]
 
-print(f"\nBest Model : {best_model_name}")
+print("Model saved inside models/")
 
 joblib.dump(
     best_model,
-    "burnout_model.pkl"
+    "models/burnout_model.pkl"
 )
-
 # =========================================================
 # FEATURE IMPORTANCE
 # =========================================================
@@ -262,6 +264,66 @@ def predict_student(student_data):
     }
 
     return labels[prediction], probability
+
+# =========================================================
+# REPORT EXPORT SYSTEM
+# =========================================================
+
+def save_report(prediction, confidence):
+
+    with open(
+        "reports/student_report.txt",
+        "w"
+    ) as f:
+
+        f.write("STUDENT BURNOUT REPORT\n")
+        f.write("=" * 40 + "\n\n")
+
+        f.write(
+            f"Prediction : {prediction}\n"
+        )
+
+        f.write(
+            f"Confidence : {confidence:.2f}%\n"
+        )
+
+        if prediction == "High":
+
+            f.write(
+                "\nHigh burnout detected\n"
+            )
+
+            f.write(
+                "Recommendations:\n"
+            )
+
+            f.write(
+                "- Improve sleep\n"
+            )
+
+            f.write(
+                "- Reduce workload\n"
+            )
+
+            f.write(
+                "- Practice stress management\n"
+            )
+
+        elif prediction == "Medium":
+
+            f.write(
+                "\nModerate burnout detected\n"
+            )
+
+        else:
+
+            f.write(
+                "\nLow burnout detected\n"
+            )
+
+    print(
+        "\nReport saved inside reports/"
+    )
 # =========================================================
 # STUDENT ANALYSIS
 # =========================================================
@@ -437,6 +499,66 @@ def save_plot(title, file):
 
     plt.close()
 
+
+# =========================================================
+# USER INPUT SYSTEM
+# =========================================================
+
+def get_student_input():
+
+    print("\nENTER STUDENT DETAILS")
+    print("-" * 35)
+
+    study_hours = float(input("Study Hours Per Day: "))
+    screen_time = float(input("Screen Time Hours: "))
+    sleep_hours = float(input("Sleep Hours: "))
+    stress_level = int(input("Stress Level (1-10): "))
+    anxiety = int(input("Anxiety Score (1-10): "))
+    depression = int(input("Depression Score (1-10): "))
+    social_support = int(input("Social Support (1-10): "))
+
+    student = {
+
+        "age": 21,
+        "academic_year": 3,
+
+        "study_hours_per_day": study_hours,
+        "screen_time": screen_time,
+        "sleep_hours": sleep_hours,
+
+        "stress_level": stress_level,
+        "anxiety_score": anxiety,
+        "depression_score": depression,
+
+        "social_support": social_support,
+
+        "exam_pressure": stress_level,
+        "internet_usage": screen_time,
+        "physical_activity": 1,
+        "financial_stress": 5,
+        "family_expectation": 5,
+        "academic_performance": 6,
+
+        "gender_Male": 1,
+
+        # =====================================================
+        # ENGINEERED FEATURES
+        # =====================================================
+
+        "stress_sleep_ratio":
+            stress_level / (sleep_hours + 1),
+
+        "mental_pressure":
+            anxiety + depression + stress_level,
+
+        "wellness_score":
+            social_support - stress_level,
+
+        "digital_overload":
+            screen_time * screen_time
+    }
+
+    return student
 # =========================================================
 # MODEL COMPARISON
 # =========================================================
@@ -564,14 +686,12 @@ save_plot(
 
 plt.figure(figsize=(7,7))
 
-risk_labels = (
-    df["risk_level"]
-    .map({
-        0:"Low",
-        1:"Medium",
-        2:"High"
-    })
-)
+risk_labels = df["risk_level"].map({
+
+    0: "Low",
+    1: "Medium",
+    2: "High"
+})
 
 risk_labels.value_counts().plot.pie(
     autopct="%1.1f%%",
@@ -585,49 +705,24 @@ save_plot(
     "severity_distribution"
 )
 
+
+
 # =========================================================
-# DEMO PREDICTION
+# INTERACTIVE PREDICTION
 # =========================================================
 
-demo_student = {
+user_student = get_student_input()
 
-    "age": 21,
-    "academic_year": 3,
-    "study_hours_per_day": 9,
-    "screen_time": 10,
-    "social_support": 2,
-    "sleep_hours": 4,
-    "exercise_frequency": 1,
-    "stress_level": 9,
-    "anxiety_score": 8,
-    "depression_score": 7,
-    "mental_health_index": 4,
-    "exam_pressure": 9,
-    "internet_usage": 8,
-    "physical_activity": 1,
-    "financial_stress": 6,
-    "family_expectation": 8,
-    "academic_performance": 6,
-
-    "gender_Male": 1,
-
-    # engineered features
-    "stress_sleep_ratio": 1.8,
-    "mental_pressure": 24,
-    "wellness_score": -2,
-    "digital_overload": 80
-}
-
-demo_pred, demo_conf = predict_student(
-    demo_student
+user_pred, user_conf = predict_student(
+    user_student
 )
 
 print("\n" + "="*45)
-print("DEMO STUDENT RESULT")
+print("LIVE STUDENT RESULT")
 print("="*45)
 
-print(f"Predicted Burnout : {demo_pred}")
-print(f"Confidence        : {demo_conf:.2f}%")
+print(f"Predicted Burnout : {user_pred}")
+print(f"Confidence        : {user_conf:.2f}%")
 
 # =========================================================
 # FINAL REPORT GENERATOR
@@ -659,11 +754,9 @@ def generate_report(prediction, confidence):
         print("\n✅ Student appears mentally stable")
         print("✔ Continue healthy lifestyle habits")
 
+generate_report(user_pred, user_conf)
 
-generate_report(
-    demo_pred,
-    demo_conf
-)
+save_report(user_pred, user_conf)
 
 
 # =========================================================
