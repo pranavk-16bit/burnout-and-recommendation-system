@@ -20,8 +20,7 @@ from sklearn.ensemble import (
     GradientBoostingClassifier
 )
 
-os.makedirs("reports", exist_ok=True)
-os.makedirs("models", exist_ok=True)
+
 
 # =========================================================
 # SETTINGS
@@ -29,7 +28,9 @@ os.makedirs("models", exist_ok=True)
 
 warnings.filterwarnings("ignore")
 
-os.makedirs("visuals", exist_ok=True)
+for folder in ["reports", "models", "visuals"]:
+    os.makedirs(folder, exist_ok=True)
+
 
 sns.set_theme(
     style="whitegrid",
@@ -176,18 +177,18 @@ results = {}
 
 for name, (model, scaled) in models.items():
 
-    train_x, test_x = (
+    Xtr, Xte = (
         (X_train_scaled, X_test_scaled)
         if scaled else
         (X_train, X_test)
     )
 
-    pred = model.fit(
-        train_x,
-        y_train
-    ).predict(test_x)
+    model.fit(Xtr, y_train)
 
-    acc = accuracy_score(y_test, pred)
+    acc = accuracy_score(
+        y_test,
+        model.predict(Xte)
+    )
 
     results[name] = acc
 
@@ -201,12 +202,13 @@ best_model_name = max(results, key=results.get)
 
 best_model = models[best_model_name][0]
 
-print("Model saved inside models/")
 
 joblib.dump(
     best_model,
     "models/burnout_model.pkl"
 )
+
+print("Model saved inside models/")
 # =========================================================
 # FEATURE IMPORTANCE
 # =========================================================
@@ -228,7 +230,7 @@ if hasattr(best_model, "feature_importances_"):
     top_features = importance_df.head(10)
 
     importance_df.to_csv(
-        "feature_importance.csv",
+        "reports/feature_importance.csv",
         index=False
     )
 
@@ -418,7 +420,7 @@ print("\nRecommendations")
 
 [print(k) for k,v in recommendations.items() if v]
 # =========================================================
-# SHAP EXPLAINABILITY
+# SHAP VISUALIZATION
 # =========================================================
 
 try:
@@ -426,39 +428,19 @@ try:
     rf_model = models["Random Forest"][0]
 
     sample_shap = X_test.sample(
-        80,
+        100,
         random_state=42
     )
 
     explainer = shap.TreeExplainer(rf_model)
 
-    shap_values = explainer.shap_values(sample_shap)
+    shap_values = explainer(
+        sample_shap
+    )
 
-    plt.figure(figsize=(10,6))
-
-    # multiclass fix
-    if isinstance(shap_values, list):
-
-        shap.summary_plot(
-            shap_values[1],   # Medium risk class
-            sample_shap,
-            plot_type="bar",
-            show=False
-        )
-
-    else:
-
-        shap.summary_plot(
-            shap_values,
-            sample_shap,
-            plot_type="bar",
-            show=False
-        )
-
-    plt.title(
-        "SHAP Feature Importance",
-        fontsize=18,
-        weight="bold"
+    shap.plots.bar(
+        shap_values[:, :, 1],
+        show=False
     )
 
     plt.tight_layout()
@@ -474,7 +456,6 @@ try:
 except Exception as e:
 
     print("\nSHAP Error:", e)
-    print("Skipping SHAP visualization...")
 
 # =========================================================
 # SAVE PLOT FUNCTION
@@ -504,61 +485,130 @@ def save_plot(title, file):
 # USER INPUT SYSTEM
 # =========================================================
 
+
+# =========================================================
+# CLEAN USER INPUT SYSTEM
+# =========================================================
+
+def ask(prompt, low, high, dtype=float):
+
+    while True:
+
+        try:
+
+            value = dtype(input(prompt))
+
+            if low <= value <= high:
+                return value
+
+            print(f"❌ Enter value between {low} and {high}")
+
+        except:
+
+            print("❌ Invalid input")
+
+
+def ask_gender():
+
+    while True:
+
+        gender = input(
+            "Gender (Male/Female): "
+        ).strip().lower()
+
+        if gender in ["male", "female"]:
+            return gender
+
+        print("❌ Enter Male or Female")
+
+
 def get_student_input():
 
-    print("\nENTER STUDENT DETAILS")
-    print("-" * 35)
+    print("\n" + "=" * 40)
+    print("ENTER STUDENT DETAILS")
+    print("=" * 40)
 
-    study_hours = float(input("Study Hours Per Day: "))
-    screen_time = float(input("Screen Time Hours: "))
-    sleep_hours = float(input("Sleep Hours: "))
-    stress_level = int(input("Stress Level (1-10): "))
-    anxiety = int(input("Anxiety Score (1-10): "))
-    depression = int(input("Depression Score (1-10): "))
-    social_support = int(input("Social Support (1-10): "))
+    study = ask(
+        "Study Hours Per Day (0-24): ",
+        0, 24
+    )
 
-    student = {
+    screen = ask(
+        "Screen Time Hours (0-24): ",
+        0, 24
+    )
+
+    sleep = ask(
+        "Sleep Hours (0-24): ",
+        0, 24
+    )
+
+    stress = ask(
+        "Stress Level (1-10): ",
+        1, 10, int
+    )
+
+    anxiety = ask(
+        "Anxiety Score (1-10): ",
+        1, 10, int
+    )
+
+    depression = ask(
+        "Depression Score (1-10): ",
+        1, 10, int
+    )
+
+    support = ask(
+        "Social Support (1-10): ",
+        1, 10, int
+    )
+
+    gender = ask_gender()
+
+    return {
+
+        # Basic Features
 
         "age": 21,
         "academic_year": 3,
 
-        "study_hours_per_day": study_hours,
-        "screen_time": screen_time,
-        "sleep_hours": sleep_hours,
+        "study_hours_per_day": study,
+        "screen_time": screen,
+        "sleep_hours": sleep,
 
-        "stress_level": stress_level,
+        "stress_level": stress,
         "anxiety_score": anxiety,
         "depression_score": depression,
+        "social_support": support,
 
-        "social_support": social_support,
+        # Defaults
 
-        "exam_pressure": stress_level,
-        "internet_usage": screen_time,
-        "physical_activity": 1,
+        "exam_pressure": stress,
+        "internet_usage": screen,
+        "physical_activity": 2,
         "financial_stress": 5,
         "family_expectation": 5,
-        "academic_performance": 6,
+        "academic_performance": 7,
 
-        "gender_Male": 1,
+        # Encoded Gender
 
-        # =====================================================
-        # ENGINEERED FEATURES
-        # =====================================================
+        "gender_Male":
+            1 if gender == "male" else 0,
+
+        # Engineered Features
 
         "stress_sleep_ratio":
-            stress_level / (sleep_hours + 1),
+            stress / (sleep + 1),
 
         "mental_pressure":
-            anxiety + depression + stress_level,
+            anxiety + depression + stress,
 
         "wellness_score":
-            social_support - stress_level,
+            support + 2 - stress,
 
         "digital_overload":
-            screen_time * screen_time
+            screen * stress
     }
-
-    return student
 # =========================================================
 # MODEL COMPARISON
 # =========================================================
@@ -705,6 +755,30 @@ save_plot(
     "severity_distribution"
 )
 
+# =========================================================
+# WEEKLY TREND
+# =========================================================
+
+weekly_scores = [5, 7, 8, 11, 14]
+
+plt.figure(figsize=(8,5))
+
+plt.plot(
+    weekly_scores,
+    marker="o",
+    linewidth=3
+)
+
+plt.xlabel("Week")
+plt.ylabel("Burnout Score")
+
+save_plot(
+    "Weekly Burnout Trend",
+    "burnout_trend"
+)
+
+print("\nVisuals saved inside visuals/")
+print("Model saved as burnout_model.pkl")
 
 
 # =========================================================
@@ -759,28 +833,5 @@ generate_report(user_pred, user_conf)
 save_report(user_pred, user_conf)
 
 
-# =========================================================
-# WEEKLY TREND
-# =========================================================
 
-weekly_scores = [5, 7, 8, 11, 14]
-
-plt.figure(figsize=(8,5))
-
-plt.plot(
-    weekly_scores,
-    marker="o",
-    linewidth=3
-)
-
-plt.xlabel("Week")
-plt.ylabel("Burnout Score")
-
-save_plot(
-    "Weekly Burnout Trend",
-    "burnout_trend"
-)
-
-print("\nVisuals saved inside visuals/")
-print("Model saved as burnout_model.pkl")
-
+print("\nSYSTEM EXECUTION COMPLETED")
