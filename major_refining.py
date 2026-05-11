@@ -41,6 +41,24 @@ sns.set_theme(
 plt.rcParams["figure.figsize"] = (10,6)
 
 # =========================================================
+# SYSTEM BANNER
+# =========================================================
+
+print("\n" + "=" * 60)
+print(" AI-POWERED STUDENT BURNOUT DETECTION SYSTEM ")
+print("=" * 60)
+
+print("\nFeatures Included:")
+print("✔ Burnout Prediction")
+print("✔ SHAP Explainability")
+print("✔ Personalized Recommendations")
+print("✔ Interactive Student Analysis")
+print("✔ Report Generation")
+print("✔ Visualization Dashboard")
+
+print("\nInitializing system...\n")
+
+# =========================================================
 # LOAD DATA
 # =========================================================
 
@@ -50,7 +68,6 @@ df = pd.read_csv(
     random_state=42
 )
 
-print(f"\nDataset Shape: {df.shape}")
 
 # =========================================================
 # PREPROCESSING
@@ -192,25 +209,46 @@ for name, (model, scaled) in models.items():
 
     results[name] = acc
 
-    print(f"{name:<22}: {acc:.4f}")
-
 # =========================================================
-# BEST MODEL
+# BEST MODEL SELECTION
 # =========================================================
 
-best_model_name = max(results, key=results.get)
+best_model_name = max(
+    results,
+    key=results.get
+)
 
-best_model = models[best_model_name][0]
+best_model = models[
+    best_model_name
+][0]
 
+
+best_acc = results[
+    best_model_name
+] * 100
+
+# Save model
 
 joblib.dump(
     best_model,
     "models/burnout_model.pkl"
 )
 
-print("Model saved inside models/")
+# Clean training summary
+
+print("MODEL TRAINING COMPLETED")
+print("────────────────────────")
+
+print(
+    f"Best Model : {best_model_name}"
+)
+
+print(
+    f"Accuracy   : {best_acc:.2f}%\n"
+)
+
 # =========================================================
-# FEATURE IMPORTANCE
+# FEATURE IMPORTANCE DATA
 # =========================================================
 
 if hasattr(best_model, "feature_importances_"):
@@ -268,6 +306,20 @@ def predict_student(student_data):
     return labels[prediction], probability
 
 # =========================================================
+# RISK DISPLAY SYSTEM
+# =========================================================
+
+def risk_emoji(level):
+
+    return {
+
+        "High": "🔴 HIGH RISK",
+        "Medium": "🟠 MODERATE RISK",
+        "Low": "🟢 LOW RISK"
+
+    }[level]
+
+# =========================================================
 # REPORT EXPORT SYSTEM
 # =========================================================
 
@@ -323,60 +375,12 @@ def save_report(prediction, confidence):
                 "\nLow burnout detected\n"
             )
 
-    print(
-        "\nReport saved inside reports/"
-    )
-# =========================================================
-# STUDENT ANALYSIS
-# =========================================================
-
-sample = X_test.iloc[0]
-
-pred = best_model.predict(
-    X_test.iloc[[0]]
-)[0]
-
-confidence = (
-    best_model
-    .predict_proba(X_test.iloc[[0]])
-    .max() * 100
-)
-
-labels = {
-    0:"Low",
-    1:"Medium",
-    2:"High"
-}
-
-risk_score = (
-
-    sample["mental_pressure"] * 0.4 +
-
-    sample["stress_level"] * 2 +
-
-    sample["screen_time"] -
-
-    sample["sleep_hours"]
-)
-
-severity = (
-    "Low Risk" if risk_score < 8 else
-    "Moderate Risk" if risk_score < 15 else
-    "High Risk"
-)
-
-print("\n" + "="*45)
-print("STUDENT BURNOUT ANALYSIS")
-print("="*45)
-
-print(f"Prediction : {labels[pred]}")
-print(f"Confidence : {confidence:.2f}%")
-print(f"Risk Score : {risk_score:.2f}")
-print(f"Severity   : {severity}")
+    
 
 # =========================================================
 # SMART INSIGHTS
 # =========================================================
+sample = X_test.iloc[0]
 
 checks = {
 
@@ -485,11 +489,6 @@ def save_plot(title, file):
 # USER INPUT SYSTEM
 # =========================================================
 
-
-# =========================================================
-# CLEAN USER INPUT SYSTEM
-# =========================================================
-
 def ask(prompt, low, high, dtype=float):
 
     while True:
@@ -503,8 +502,7 @@ def ask(prompt, low, high, dtype=float):
 
             print(f"❌ Enter value between {low} and {high}")
 
-        except:
-
+        except ValueError:
             print("❌ Invalid input")
 
 
@@ -777,8 +775,6 @@ save_plot(
     "burnout_trend"
 )
 
-print("\nVisuals saved inside visuals/")
-print("Model saved as burnout_model.pkl")
 
 
 # =========================================================
@@ -791,47 +787,66 @@ user_pred, user_conf = predict_student(
     user_student
 )
 
-print("\n" + "="*45)
-print("LIVE STUDENT RESULT")
-print("="*45)
+print("\n" + "═" * 50)
+print("            STUDENT ANALYSIS REPORT")
+print("═" * 50)
 
-print(f"Predicted Burnout : {user_pred}")
-print(f"Confidence        : {user_conf:.2f}%")
+print(f"""
+Burnout Status : {risk_emoji(user_pred)}
+Confidence     : {user_conf:.2f}%
+""")
 
 # =========================================================
 # FINAL REPORT GENERATOR
 # =========================================================
-
 def generate_report(prediction, confidence):
 
-    print("\n" + "="*45)
-    print("FINAL BURNOUT REPORT")
-    print("="*45)
-
-    print(f"Burnout Level : {prediction}")
-    print(f"Confidence    : {confidence:.2f}%")
+    print("RECOMMENDATIONS")
+    print("───────────────")
 
     if prediction == "High":
 
-        print("\n🚨 Student requires immediate attention")
-        print("✔ Academic workload reduction advised")
-        print("✔ Sleep recovery strongly recommended")
+        tips = [
+            "Reduce academic overload",
+            "Improve sleep schedule",
+            "Practice stress management",
+            "Increase physical activity"
+        ]
 
     elif prediction == "Medium":
 
-        print("\n⚠ Moderate burnout indicators detected")
-        print("✔ Stress management recommended")
-        print("✔ Maintain healthier study balance")
+        tips = [
+            "Maintain healthier study balance",
+            "Take regular study breaks",
+            "Improve time management"
+        ]
 
     else:
 
-        print("\n✅ Student appears mentally stable")
-        print("✔ Continue healthy lifestyle habits")
+        tips = [
+            "Maintain current lifestyle",
+            "Continue healthy habits"
+        ]
 
-generate_report(user_pred, user_conf)
-
-save_report(user_pred, user_conf)
-
+    for tip in tips:
+        print(f"✔ {tip}")
 
 
-print("\nSYSTEM EXECUTION COMPLETED")
+
+# =========================================================
+# FINAL PROJECT SUMMARY
+# =========================================================
+
+print("\n" + "═" * 65)
+print("                SYSTEM SUMMARY")
+print("═" * 65)
+
+print(f"""
+Model Used        : {best_model_name}
+Prediction Engine : Active
+Explainable AI    : Enabled
+Visual Reports    : Generated
+Final Accuracy    : {best_acc:.2f}%
+
+SYSTEM STATUS     : READY
+""")
