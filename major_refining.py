@@ -686,11 +686,12 @@ trend = df.sample(
 
 plt.figure(figsize=(10,6))
 
-sns.scatterplot(
+sns.regplot(
     data=trend,
     x="mental_health_index",
     y="screen_time",
-    alpha=0.4
+    scatter_kws={"alpha":0.2},
+    line_kws={"color":"red"}
 )
 
 save_plot(
@@ -727,26 +728,28 @@ save_plot(
     "Key Feature Correlation",
     "correlation_heatmap"
 )
-
 # =========================================================
 # BURNOUT PIE CHART
 # =========================================================
 
 plt.figure(figsize=(7,7))
 
-risk_labels = df["risk_level"].map({
+risk_counts = (
+    df["risk_level"]
+    .map({
+        0: "Low",
+        1: "Medium",
+        2: "High"
+    })
+    .value_counts()
+)
 
-    0: "Low",
-    1: "Medium",
-    2: "High"
-})
-
-risk_labels.value_counts().plot.pie(
+plt.pie(
+    risk_counts.values,
+    labels=risk_counts.index,
     autopct="%1.1f%%",
     colors=sns.color_palette("Set2")
 )
-
-plt.ylabel("")
 
 save_plot(
     "Burnout Severity Distribution",
@@ -831,7 +834,15 @@ def generate_report(prediction, confidence):
     for tip in tips:
         print(f"✔ {tip}")
 
+generate_report(
+    user_pred,
+    user_conf
+)
 
+save_report(
+    user_pred,
+    user_conf
+)
 
 # =========================================================
 # FINAL PROJECT SUMMARY
