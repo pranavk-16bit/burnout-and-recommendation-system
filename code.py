@@ -490,7 +490,7 @@ def save_history(score, sleep_hours, prediction):
     new_data = pd.DataFrame({
 
     "date":[
-    datetime.now().strftime("%Y-%m-%d %H:%M")
+    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ],
 
     "burnout_score":[score],
@@ -662,7 +662,7 @@ def early_warning():
 
     ) * 100
 
-    if increase > 15:
+    if increase > 25 and current > 2:
 
         print(
             "\n🚨 ALERT"
@@ -1007,14 +1007,12 @@ burnout_score = (
 )
 
 wellness = (
-
-    user_student["sleep_hours"] +
-
-    user_student["physical_activity"] +
-
-    user_student["social_support"]
-
-) / 3
+    (
+        user_student["sleep_hours"] +
+        user_student["physical_activity"] +
+        user_student["social_support"]
+    ) / 30
+) * 10
 
 burnout_indicator(
     burnout_score
@@ -1123,6 +1121,11 @@ history = pd.read_csv(
     "reports/student_history.csv"
 )
 
+history["risk_level"] = (
+    history["risk_level"]
+    .fillna("Unknown")
+)
+
 if len(history) >= 3:
 
     latest = history["burnout_score"].iloc[-1]
@@ -1149,6 +1152,11 @@ if len(history) >= 3:
 
 print("\nRECENT MONITORING HISTORY")
 print("────────────────────────")
+
+history["risk_level"] = (
+    history["risk_level"]
+    .fillna("Unknown")
+)
 
 print(
     history[
