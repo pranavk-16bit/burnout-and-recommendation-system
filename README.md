@@ -676,6 +676,139 @@ Gradient Boosting Classifier
 SYSTEM READY FOR DEMONSTRATION 
 
 
+
+
+# Day 9 Updates
+
+## Burnout Monitoring System
+
+The project was upgraded from a static prediction model into a continuous burnout monitoring system.
+
+### New Architecture
+
+Student Input
+↓
+Prediction Engine
+↓
+Explainable AI
+↓
+Recommendation Engine
+↓
+Trend Analysis
+↓
+Burnout Monitoring
+↓
+Early Warning Alert System
+
+---
+
+## Burnout History Tracking
+
+A student history database was introduced using:
+
+reports/student_history.csv
+
+Each prediction session stores:
+
+- Timestamp
+- Burnout Score
+- Risk Level
+- Sleep Hours
+
+This allows long-term monitoring of burnout progression.
+
+---
+
+## Burnout Trend Analysis
+
+Implemented:
+
+- Burnout Trend Over Time
+- Sleep vs Burnout Relationship
+
+Generated Visualizations:
+
+- burnout_trend.png
+- sleep_burnout_trend.png
+
+These plots allow tracking behavioural deterioration or improvement across multiple sessions.
+
+---
+
+## Early Warning System
+
+An alert mechanism was developed.
+
+Logic:
+
+- Calculate weekly burnout average
+- Compare current burnout score against weekly average
+- Trigger warning if burnout increases significantly
+
+Example:
+
+🚨 ALERT
+Burnout risk increasing rapidly.
+Immediate intervention recommended.
+
+This transforms the project from a prediction tool into a proactive monitoring system.
+
+---
+
+## Explainable Prediction Module
+
+Prediction outputs now include:
+
+- Low Risk Probability
+- Medium Risk Probability
+- High Risk Probability
+
+Example:
+
+Low Risk    : 33.36%
+Medium Risk : 65.87%
+High Risk   : 0.77%
+
+Top prediction factors are automatically displayed using feature importance analysis.
+
+---
+
+## Personal Wellness Dashboard
+
+Implemented dashboard visualization including:
+
+- Top Burnout Indicators
+- Personal Wellness Profile
+
+The dashboard provides a combined view of model insights and student wellness metrics.
+
+---
+
+## Risk Relationship Analysis
+
+Added correlation-based visualization showing relationships between:
+
+- Stress Level
+- Sleep Hours
+- Screen Time
+- Wellness Score
+
+and overall burnout risk.
+
+---
+
+## Day 9 Outcome
+
+The project evolved from a machine learning classifier into an AI-powered burnout monitoring and early-warning system capable of:
+
+- Burnout Prediction
+- Explainable AI
+- Personalized Recommendations
+- Trend Monitoring
+- Early Warning Alerts
+- Wellness Visualization
+
+
 ## 👨‍💻 Author
 
 Pranav K
