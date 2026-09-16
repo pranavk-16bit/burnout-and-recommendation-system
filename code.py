@@ -7,22 +7,27 @@ import os, warnings, joblib,numpy as np, pandas as pd, seaborn as sns, matplotli
 
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import (accuracy_score, f1_score, classification_report, confusion_matrix)
+from sklearn.metrics import (accuracy_score, f1_score)
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import (RandomForestClassifier, GradientBoostingClassifier)
 from imblearn.over_sampling import SMOTE
 from xgboost import XGBClassifier
 from datetime import datetime
+from sklearn.pipeline import make_pipeline
+
 
 # =========================================================
 # SETTINGS
 # =========================================================
 
 warnings.filterwarnings("ignore")
-
-for folder in ["reports", "models", "visuals"]:
-    os.makedirs(folder, exist_ok=True)
-
+from pathlib import Path
+for folder in map(Path, [
+    "reports",
+    "models",
+    "visuals"
+]):
+    folder.mkdir(exist_ok=True)
 
 sns.set_theme(
     style="whitegrid",
@@ -50,9 +55,7 @@ def save_plot(title, file):
         f"visuals/{file}.png",
         dpi=300
     )
-
     plt.show()
-
     plt.close()
 
 # =========================================================
@@ -62,90 +65,58 @@ def save_plot(title, file):
 print("\n" + "=" * 60)
 print(" AI-POWERED STUDENT BURNOUT DETECTION SYSTEM ")
 print("=" * 60)
-
 print("\nFeatures Included:")
 print("✔ Burnout Prediction")
-print("✔ SHAP Explainability")
 print("✔ Personalized Recommendations")
 print("✔ Interactive Student Analysis")
 print("✔ Report Generation")
 print("✔ Visualization Dashboard")
-
 print("\nInitializing system...\n")
 
 # =========================================================
 # LOAD DATA
 # =========================================================
-
-df = pd.read_csv(
+DATA_PATH = os.environ.get(
+    "BURNOUT_DATA_PATH",
     r"C:\Users\prana\Downloads\student_mental_health_burnout_1M.csv"
-).sample(50000,           # use 100k rows instead of 1M
-    random_state=42
 )
 
-
+df = pd.read_csv(DATA_PATH).sample(
+    50000,
+    random_state=42
+)
 # =========================================================
 # PREPROCESSING
 # =========================================================
-
 df.columns = df.columns.str.lower()
-
 df["risk_level"] = df["risk_level"].map({
     "Low":0,
     "Medium":1,
     "High":2
 })
-
 df = pd.get_dummies(
     df,
     columns=["gender"],
     drop_first=True
 )
-
 # =========================================================
 # FEATURE ENGINEERING
 # =========================================================
+def engineer_features(d):
+    d["stress_sleep_ratio"] = d["stress_level"] / (d["sleep_hours"] + 1)
+    d["mental_pressure"] = d["anxiety_score"] + d["depression_score"] + d["exam_pressure"]
+    d["wellness_score"] = d["physical_activity"] + d["social_support"] - d["stress_level"]
+    d["digital_overload"] = d["screen_time"] * d["internet_usage"]
+    d["sleep_quality"] = d["sleep_hours"] / (d["screen_time"] + 1)
+    d["stress_index"] = d["stress_level"] * d["exam_pressure"]
+    d["lifestyle_balance"] = d["physical_activity"] + d["social_support"] - d["screen_time"]
+    return d
 
-df["stress_sleep_ratio"] = (
-    df["stress_level"] /
-    (df["sleep_hours"] + 1)
-)
+df = engineer_features(df)   # <-- this line was missing
 
-df["mental_pressure"] = (
-    df["anxiety_score"] +
-    df["depression_score"] +
-    df["exam_pressure"]
-)
-
-df["wellness_score"] = (
-    df["physical_activity"] +
-    df["social_support"] -
-    df["stress_level"]
-)
-
-df["digital_overload"] = (
-    df["screen_time"] *
-    df["internet_usage"]
-)
-
-df["sleep_quality"] = (
-    df["sleep_hours"] / (df["screen_time"] + 1)
-)
-
-df["stress_index"] = (
-    df["stress_level"] *
-    df["exam_pressure"]
-)
-
-df["lifestyle_balance"] = (
-    df["physical_activity"] +
-    df["social_support"] -
-    df["screen_time"]
-)
 # =========================================================
 # FEATURES & TARGET
 # =========================================================
-
 X = df.drop([
     "risk_level",
     "burnout_score",
@@ -271,6 +242,7 @@ for name, (model, scaled) in models.items():
     f1_scores[name] = f1
 
 
+
 # =========================================================
 # BEST MODEL SELECTION
 # =========================================================
@@ -283,40 +255,26 @@ best_model_name = max(
 best_model = models[
     best_model_name
 ][0]
-joblib.dump(
-    best_model,
-    "models/burnout_model.pkl"
-)
+files = {
+    "burnout_model.pkl": best_model,
+    "scaler.pkl": scaler,
+    "features.pkl": X.columns.tolist()
+}
+
+for name, obj in files.items():
+    joblib.dump(obj, f"models/{name}")
 
 # CROSS VALIDATION
+best_needs_scaling = models[best_model_name][1]
+cv_pipeline = make_pipeline(StandardScaler(), best_model) if best_needs_scaling else best_model
+scores = cross_val_score(cv_pipeline, X_train, y_train, cv=5)
 
-scores = cross_val_score(
-    best_model,
-    X,
-    y,
-    cv=5
-)
 
-print(
-    f"Cross Validation Accuracy : "
-    f"{scores.mean()*100:.2f}%"
-)
+
 
 best_acc = results[
     best_model_name
 ] * 100
-
-# Save model
-
-joblib.dump(
-    scaler,
-    "models/scaler.pkl"
-)
-
-joblib.dump(
-    X.columns.tolist(),
-    "models/features.pkl"
-)
 
 # Clean training summary
 
@@ -333,15 +291,6 @@ print(
 
 predictions = best_model.predict(X_test)
 
-print("\nCLASSIFICATION REPORT")
-print("─────────────────────")
-
-print(
-    classification_report(
-        y_test,
-        predictions
-    )
-)
 
 f1 = f1_score(
     y_test,
@@ -349,61 +298,57 @@ f1 = f1_score(
     average="weighted"
 )
 
-print(f"F1 Score : {f1:.4f}")
 # =========================================================
 # FEATURE IMPORTANCE DATA
 # =========================================================
 
 if hasattr(best_model, "feature_importances_"):
+    importances = best_model.feature_importances_
+elif hasattr(best_model, "coef_"):
+    importances = np.abs(best_model.coef_).mean(axis=0)
+else:
+    importances = np.zeros(len(X.columns))
+importance_df = pd.DataFrame({"Feature": X.columns, "Importance": importances}).sort_values("Importance", ascending=False)
+top_features = importance_df.head(10)
 
-    importance_df = pd.DataFrame({
-
-        "Feature": X.columns,
-
-        "Importance":
-            best_model.feature_importances_
-
-    }).sort_values(
-        by="Importance",
-        ascending=False
+importance_df.to_csv(
+    "reports/feature_importance.csv",
+    index=False
     )
 
-    top_features = importance_df.head(10)
 
-    importance_df.to_csv(
-        "reports/feature_importance.csv",
-        index=False
-    )
+
 
 # =========================================================
 # REUSABLE PREDICTION FUNCTION
 # =========================================================
+
+RISK_LABELS = {
+
+0:"Low",
+
+1:"Medium",
+
+2:"High"
+}
 
 def predict_student(student_data):
 
     input_df = pd.DataFrame([student_data])
 
     # Add missing columns automatically
-    for col in X.columns:
-
-        if col not in input_df.columns:
-            input_df[col] = 0
-
-    # Keep exact training column order
-    input_df = input_df[X.columns]
+    input_df = input_df.reindex(
+        columns=X.columns,
+        fill_value=0
+)
+    
 
     prediction = best_model.predict(input_df)[0]
 
     probs = best_model.predict_proba(input_df)[0]
 
-    labels = {
-        0: "Low",
-        1: "Medium",
-        2: "High"
-}
-
     return (
-        labels[prediction],
+        RISK_LABELS[prediction],
         probs.max() * 100,
         probs
 )
@@ -411,16 +356,42 @@ def predict_student(student_data):
 # =========================================================
 # RISK DISPLAY SYSTEM
 # =========================================================
+RISK_EMOJIS = {
 
+"Low":"🟢 LOW RISK",
+
+"Medium":"🟠 MODERATE RISK",
+
+"High":"🔴 HIGH RISK"
+
+}
 def risk_emoji(level):
+    return RISK_EMOJIS[level]
 
-    return {
+def confidence_bar(conf):
 
-        "High": "🔴 HIGH RISK",
-        "Medium": "🟠 MODERATE RISK",
-        "Low": "🟢 LOW RISK"
+    filled = round(conf / 10)
 
-    }[level]
+    return (
+        "█" * filled +
+        "░" * (10 - filled)
+    )
+
+def burnout_status(score):
+    thresholds = [
+
+    (1.5,"🟢 Stable"),
+
+    (2.3,"🟠 Watchlist")
+]
+
+    for limit, status in thresholds:
+
+        if score < limit:
+            return status
+
+    return "🔴 Critical"
+    
 
 # =========================================================
 # REPORT EXPORT SYSTEM
@@ -482,7 +453,7 @@ def save_report(prediction, confidence):
 # HISTORY TRACKING
 # =========================================================
 
-def save_history(score, sleep_hours, prediction):
+def save_history(score,prediction,confidence,student,wellness,monitoring):
     history_file = (
         "reports/student_history.csv"
     )
@@ -490,18 +461,32 @@ def save_history(score, sleep_hours, prediction):
     new_data = pd.DataFrame({
 
     "date":[
-    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ],
 
     "burnout_score":[score],
 
+    "risk_level":[prediction],
+
+    "confidence":[confidence],
+
     "sleep_hours":[
-        sleep_hours
+        student["sleep_hours"]
     ],
-    "risk_level":[prediction]
+
+    "screen_time":[
+        student["screen_time"]
+    ],
+
+    "physical_activity":[
+        student["physical_activity"]
+    ],
+
+    "wellness":[wellness],
+
+    "monitoring":[monitoring]
 
 })
-
     if os.path.exists(history_file):
 
         old = pd.read_csv(
@@ -521,21 +506,35 @@ def save_history(score, sleep_hours, prediction):
         history_file,
         index=False
     )
+    updated.to_excel(
+    "reports/student_history.xlsx",
+    index=False
+)
 
 def burnout_trend():
 
-    history = pd.read_csv(
-        "reports/student_history.csv"
+    history = load_history()
+
+    history["date"] = pd.to_datetime(
+        history["date"],
+        format="mixed"
     )
+
+    history["date_label"] = (
+        history["date"]
+        .dt.strftime("%d-%b")
+    )
+
+    history = history.tail(7)
 
     if len(history) < 2:
         return
 
-    plt.figure(figsize=(12,6))
+    plt.figure(figsize=(14,6))
 
     plt.plot(
-        history["date"],
-        history["burnout_score"],
+    history["date_label"],
+    history["burnout_score"],
         marker="o",
         linewidth=4,
         markersize=10,
@@ -543,8 +542,8 @@ def burnout_trend():
     )
 
     plt.fill_between(
-        history["date"],
-        history["burnout_score"],
+    history["date_label"],
+    history["burnout_score"],
         alpha=0.25,
         color="orange"
     )
@@ -553,6 +552,7 @@ def burnout_trend():
 
     plt.ylabel("Burnout Score")
     plt.xlabel("Date")
+    plt.xticks(rotation=20)
 
     plt.tight_layout()
 
@@ -567,19 +567,29 @@ def burnout_trend():
 
 def sleep_burnout_trend():
 
-    history = pd.read_csv(
-        "reports/student_history.csv"
+    history = load_history()
+
+    history["date"] = pd.to_datetime(
+        history["date"],
+        format="mixed"
     )
+
+    history["date_label"] = (
+        history["date"]
+        .dt.strftime("%d-%b")
+    )
+
+    history = history.tail(7)
 
     if len(history) < 2:
         return
 
     fig, ax1 = plt.subplots(
-        figsize=(12,6)
+        figsize=(14,6)
     )
 
     ax1.plot(
-        history["date"],
+    history["date_label"],
         history["burnout_score"],
         marker="o",
         linewidth=4,
@@ -595,7 +605,7 @@ def sleep_burnout_trend():
     ax2 = ax1.twinx()
 
     ax2.plot(
-        history["date"],
+    history["date_label"],
         history["sleep_hours"],
         marker="s",
         linewidth=4,
@@ -614,7 +624,7 @@ def sleep_burnout_trend():
         weight="bold"
     )
 
-    plt.xticks(rotation=45)
+    plt.xticks(rotation=20)
 
     plt.tight_layout()
 
@@ -626,93 +636,77 @@ def sleep_burnout_trend():
     plt.show()
     plt.close()
 
+def load_history():
+
+    history = pd.read_csv(
+        "reports/student_history.csv"
+    )
+
+    history["risk_level"] = (
+        history["risk_level"]
+        .fillna("Unknown")
+    )
+
+    return history
+
+
 def early_warning():
 
     history_file = (
         "reports/student_history.csv"
     )
 
-    if not os.path.exists(
-        history_file
-    ):
+    if not os.path.exists(history_file):
         return
 
-    history = pd.read_csv(
-        history_file
-    )
+    history = load_history()
 
     if len(history) < 7:
         return
 
-    current = history[
+    history = load_history()
+    current_score = history[
         "burnout_score"
     ].iloc[-1]
 
-    weekly_avg = history[
+    weekly_average = history[
         "burnout_score"
     ].tail(7).mean()
 
     increase = (
-
-        (current - weekly_avg)
-
+        (current_score - weekly_average)
         /
-
-        weekly_avg
-
+        weekly_average
     ) * 100
 
-    if increase > 25 and current > 2:
+    if current_score > weekly_average:
+
+        print("\n⚠ EARLY WARNING SYSTEM")
+        print("─────────────────────")
 
         print(
-            "\n🚨 ALERT"
-    )
-
-        print(
-            "Burnout risk increasing rapidly."
-    )
-
-        print(
-            "Immediate intervention recommended."
-    )
-
-        print(
-            "\n⚠ EARLY WARNING"
+            "Burnout Risk Increasing"
         )
 
         print(
-
-            f"Burnout increased "
-
+            f"Trend has increased "
             f"{increase:.1f}% "
-
-            f"vs weekly average"
-
+            f"during the last 7 records."
         )
 
-# =========================================================
-# SMART INSIGHTS
-# =========================================================
-sample = X_test.iloc[0]
+        print(
+            "Monitor sleep, stress and workload."
+        )
 
-checks = {
+    else:
 
-    "⚠ High Screen Time":
-        sample["screen_time"] > 8,
+        print("\n✅ EARLY WARNING SYSTEM")
+        print("─────────────────────")
 
-    "⚠ Poor Sleep":
-        sample["sleep_hours"] < 6,
+        print(
+            "No rising burnout trend detected."
+        )
 
-    "⚠ High Stress":
-        sample["stress_level"] > 7,
-
-    "⚠ Low Wellness":
-        sample["wellness_score"] < 3
-}
-
-print("\nRisk Factors")
-
-[print(k) for k,v in checks.items() if v]
 
 # =========================================================
 # USER INPUT SYSTEM
@@ -748,34 +742,35 @@ def ask_gender():
 
         print("❌ Enter Male or Female")
 
+print("\n" + "═" * 65)
+print("                SYSTEM SUMMARY")
+print("═" * 65)
+
+print(f"""
+Model Used        : {best_model_name}
+Prediction Engine : Active
+Explainable AI    : Enabled
+Visual Reports    : Generated
+Final Accuracy    : {best_acc:.2f}%
+SYSTEM STATUS     : READY
+""")
 
 def get_student_input():
-
     print("\n" + "=" * 40)
     print("ENTER STUDENT DETAILS")
     print("=" * 40)
 
-    study = ask(
-        "Study Hours Per Day (0-24): ",
-        0, 24
-    )
+    while True:
+        study = ask("Study Hours Per Day (0-16): ", 0, 16)
+        screen = ask("Screen Time Hours (0-16): ", 0, 16)
+        sleep = ask("Sleep Hours (0-12): ", 0, 12)
 
-    screen = ask(
-        "Screen Time Hours (0-24): ",
-        0, 24
-    )
+        if study + screen + sleep <= 24:
+            break
+        print(f"❌ Study + Screen + Sleep = {study+screen+sleep} hours, "
+              f"which exceeds 24 in a day. Please re-enter.")
 
-    sleep = ask(
-        "Sleep Hours (0-24): ",
-        0, 24
-    )
-
-    mental_health = ask(
-        "Mental Health Score (1-10): ",
-        1,
-        10,
-        int
-)
+    mental_health = ask("Mental Health Score (1-10): ", 1, 10, int)
     stress = max(1, 11 - mental_health)
 
     anxiety = max(1, round((11 - mental_health) * 0.9))
@@ -784,34 +779,25 @@ def get_student_input():
 
     support = mental_health
     
-    activity = ask(
-    "Physical Activity Hours (0-10): ",
-    0, 10
-    )
+    activity = ask("Physical Activity Hours (0-6): ", 0, 6)
+
     mental_health_score = (
     mental_health
     )
 
     gender = ask_gender()
 
-    return {
 
-        # Basic Features
-
+    student = {
         "age": 21,
         "academic_year": 3,
-
         "study_hours_per_day": study,
         "screen_time": screen,
         "sleep_hours": sleep,
-
         "stress_level": stress,
         "anxiety_score": anxiety,
         "depression_score": depression,
         "social_support": support,
-
-        # Defaults
-
         "exam_pressure": stress,
         "internet_usage": screen,
         "physical_activity": activity,
@@ -819,26 +805,11 @@ def get_student_input():
         "financial_stress": 5,
         "family_expectation": 5,
         "academic_performance": 7,
-
-        # Encoded Gender
-
-        "gender_Male":
-            1 if gender == "male" else 0,
-
-        # Engineered Features
-
-        "stress_sleep_ratio":
-            stress / (sleep + 1),
-
-        "mental_pressure":
-            anxiety + depression + stress,
-
-        "wellness_score":
-            support + 2 - stress,
-
-        "digital_overload":
-            screen * stress
+        "gender_Male": 1 if gender == "male" else 0,
     }
+    return engineer_features(student)
+
+
 
 def burnout_indicator(score):
 
@@ -991,6 +962,7 @@ def risk_factor_relationships():
 # INTERACTIVE PREDICTION
 # =========================================================
 
+
 user_student = get_student_input()
 
 user_pred, user_conf, probs = predict_student(
@@ -1005,14 +977,33 @@ burnout_score = (
     probs[2] * 3
 
 )
+def apply_burnout_overrides(student, prediction):
+    if student["sleep_hours"] < 4 or student["screen_time"] > 12 or student["study_hours_per_day"] > 12:
+        return "High"
+    return prediction
 
-wellness = (
-    (
-        user_student["sleep_hours"] +
-        user_student["physical_activity"] +
-        user_student["social_support"]
-    ) / 30
-) * 10
+user_pred = apply_burnout_overrides(user_student, user_pred)
+
+def compute_wellness(student):
+    sleep_component = min(student["sleep_hours"], 9) / 9        # 9hrs = ideal, capped
+    activity_component = min(student["physical_activity"], 5) / 5
+    support_component = student["social_support"] / 10
+    screen_penalty = min(student["screen_time"], 12) / 12        # more screen = worse
+
+    wellness = (
+        sleep_component * 4 +
+        activity_component * 3 +
+        support_component * 3 -
+        screen_penalty * 3
+    )
+    return max(0, min(wellness, 10))  # clamp to 0-10
+
+wellness = compute_wellness(user_student)   # <-- this line replaces your old inline formula
+
+user_pred = apply_burnout_overrides(user_student, user_pred)
+
+
+
 
 burnout_indicator(
     burnout_score
@@ -1023,9 +1014,19 @@ burnout_dashboard(
 risk_factor_relationships()
 
 save_history(
+
     burnout_score,
-    user_student["sleep_hours"],
-    user_pred
+
+    user_pred,
+
+    user_conf,
+
+    user_student,
+
+    wellness,
+
+    burnout_status(burnout_score)
+
 )
 burnout_trend()
 
@@ -1034,35 +1035,67 @@ sleep_burnout_trend()
 
 early_warning()
 
-def burnout_status(score):
 
-    if score < 1.5:
+def health_bar(score, maximum):
+    score = max(0, min(score, maximum))  # clamp before rendering
+    filled = round((score / maximum) * 10)
+    return "█" * filled + "░" * (10 - filled) + f"  {score:.1f}/{maximum}"
 
-        return "🟢 Stable"
+def health_grade(score):
 
-    elif score < 2.3:
+    if score >= 8:
+        return "A"
 
-        return "🟠 Watchlist"
+    if score >= 6:
+        return "B"
 
-    else:
+    if score >= 4:
+        return "C"
 
-        return "🔴 Critical"
+    return "D"
 
-print("\n" + "═" * 50)
-print("            STUDENT ANALYSIS REPORT")
-print("═" * 50)
+stress_rating = 11 - user_student["stress_level"]
+
+sleep_rating = min(5, round(user_student["sleep_hours"] / 2))
+
+mental_rating = round(user_student["mental_health_score"] / 2)
+
+activity_rating = min(5, round(user_student["physical_activity"]))
+
+screen_rating = max(1, 6 - round(user_student["screen_time"]))
+
+print("\n" + "=" * 42)
+print("      STUDENT HEALTH SCORECARD")
+print("=" * 42)
 
 print(f"""
-Burnout Status : {risk_emoji(user_pred)}
-Confidence     : {user_conf:.2f}%
-Low Risk       : {probs[0]*100:.2f}%
-Medium Risk    : {probs[1]*100:.2f}%
-High Risk      : {probs[2]*100:.2f}%
-Burnout Score  : {burnout_score:.2f}
-Wellness Score : {wellness:.1f}/10
-Monitoring     : {burnout_status(burnout_score)}
-""")
+Burnout Risk        {risk_emoji(user_pred)}
 
+Overall Wellness    {wellness:.1f}/10
+
+Sleep
+    {health_bar(user_student["sleep_hours"],10)}
+
+Stress
+    {health_bar(11-user_student["stress_level"],10)}
+
+Mental Health
+    {health_bar(user_student["mental_health_score"],10)}
+
+Activity
+    {health_bar(user_student["physical_activity"],10)}
+
+Screen Time
+    {health_bar(10-user_student["screen_time"],10)}
+
+Confidence     : {confidence_bar(user_conf)}
+
+                  {user_conf:.2f}%
+
+Overall Health Grade
+
+        {health_grade(wellness)}
+""")
 
 # =====================================================
 # EXPLAINABLE AI
@@ -1103,49 +1136,51 @@ feature_names = {
     "stress_index": "Stress Index"
 }
 
-print("\nTOP REASONS FOR PREDICTION")
-print("──────────────────────────")
+print("\nBURNOUT RISK BREAKDOWN")
+print("══════════════════════")
 
-for i, row in enumerate(
-    top_features.head(3).itertuples(),
-    start=1
-):
-    print(
-        f"{i}. {feature_names.get(row.Feature, row.Feature)}"
+top3 = top_features.head(3).copy()
+
+top3["Percent"] = (
+    top3["Importance"]
+    /
+    top3["Importance"].sum()
+) * 100
+
+for row in top3.itertuples():
+
+    name = feature_names.get(
+        row.Feature,
+        row.Feature
     )
 
-print("\nMONITORING STATUS")
-print("────────────────")
+    blocks = "█" * round(row.Percent / 10)
 
-history = pd.read_csv(
-    "reports/student_history.csv"
-)
+    print(
+        f"{name:<25}"
+        f"{blocks:<10}"
+        f"{row.Percent:.1f}%"
+    )
 
-history["risk_level"] = (
-    history["risk_level"]
-    .fillna("Unknown")
-)
+
+history = load_history()
 
 if len(history) >= 3:
 
     latest = history["burnout_score"].iloc[-1]
-
     previous = history["burnout_score"].iloc[-2]
 
     if latest > previous:
-
         print(
             "⚠ Burnout trend increasing"
         )
 
     elif latest < previous:
-
         print(
             "✅ Burnout improving"
         )
 
     else:
-
         print(
             "➖ Stable"
         )
@@ -1153,10 +1188,6 @@ if len(history) >= 3:
 print("\nRECENT MONITORING HISTORY")
 print("────────────────────────")
 
-history["risk_level"] = (
-    history["risk_level"]
-    .fillna("Unknown")
-)
 
 print(
     history[
@@ -1169,60 +1200,94 @@ print(
 # =========================================================
 def generate_report(student, prediction):
 
-    print("RECOMMENDATIONS")
-    print("───────────────")
+    print("\nRECOMMENDATIONS")
+    print("════════════════════════════")
 
     recommendations = []
 
-    # =====================================================
-    # DYNAMIC RECOMMENDATIONS
-    # =====================================================
+    # -------------------------
+    # Sleep
+    # -------------------------
+    sleep = student["sleep_hours"]
 
-    if student["stress_level"] >= 7:
-        recommendations.append(
-            "Practice stress management"
-        )
+    if sleep < 6:
+        recommendations.append("🔴 Increase sleep by 2 hours daily.")
+    elif sleep < 7:
+        recommendations.append("🟠 Target 7-8 hours of sleep.")
+    else:
+        recommendations.append("🟢 Excellent sleeping habit.")
 
-    if student["sleep_hours"] <= 5:
-        recommendations.append(
-            "Improve sleep schedule"
-        )
+    # -------------------------
+    # Stress
+    # -------------------------
+    stress = student["stress_level"]
 
-    if student["screen_time"] >= 8:
-        recommendations.append(
-            "Reduce screen time"
-        )
+    if stress >= 8:
+        recommendations.append("🔴 Practice stress management immediately.")
+    elif stress >= 5:
+        recommendations.append("🟠 Include 15 minutes of meditation.")
+    else:
+        recommendations.append("🟢 Stress level is under control.")
 
-    if student["social_support"] <= 4:
-        recommendations.append(
-            "Increase social interaction"
-        )
+    # -------------------------
+    # Screen Time
+    # -------------------------
+    screen = student["screen_time"]
 
-    if student["study_hours_per_day"] >= 10:
-        recommendations.append(
-            "Reduce academic overload"
-        )
+    if screen > 8:
+        recommendations.append("🔴 Reduce screen time by at least 2 hours.")
+    elif screen > 5:
+        recommendations.append("🟠 Take a 10-minute break every hour.")
+    else:
+        recommendations.append("🟢 Healthy screen usage.")
 
-    if student["physical_activity"] <= 2:
-        recommendations.append(
-            "Increase physical activity"
-        )
+    # -------------------------
+    # Physical Activity
+    # -------------------------
+    activity = student["physical_activity"]
 
-    if prediction == "High":
-        recommendations.append(
-            "Seek counseling support if needed"
-        )
+    if activity < 2:
+        recommendations.append("🔴 Exercise at least 30 minutes daily.")
+    elif activity < 5:
+        recommendations.append("🟠 Increase physical activity.")
+    else:
+        recommendations.append("🟢 Excellent activity level.")
 
-    if not recommendations:
-        recommendations.append(
-            "Maintain current healthy lifestyle"
-        )
+    # -------------------------
+    # Social Support
+    # -------------------------
+    support = student["social_support"]
 
+    if support < 4:
+        recommendations.append("🟠 Spend more time with friends and family.")
+    else:
+        recommendations.append("🟢 Maintain your social support.")
+
+    # -------------------------
+    # Study Hours
+    # -------------------------
+    study = student["study_hours_per_day"]
+
+    if study > 10:
+        recommendations.append("🟠 Reduce academic workload.")
+    elif study < 3:
+        recommendations.append("🟢 Maintain consistent study habits.")
+
+    # -------------------------
+    # Extra Advice
+    # -------------------------
+    recommendations.append("💧 Drink 2-3 liters of water daily.")
+    recommendations.append("🥗 Maintain a balanced diet.")
+    recommendations.append("🚶 Walk outdoors for 20 minutes.")
+    recommendations.append("🧘 Stretch every hour.")
+    recommendations.append("😴 Avoid mobile phone before bedtime.")
+
+    # -------------------------
+    # Print Recommendations
+    # -------------------------
     for tip in recommendations:
         print(f"✔ {tip}")
-
-    
-
+        
 generate_report(
     user_student,
     user_pred
@@ -1232,21 +1297,3 @@ save_report(
     user_pred,
     user_conf
 )
-
-# =========================================================
-# FINAL PROJECT SUMMARY
-# =========================================================
-
-print("\n" + "═" * 65)
-print("                SYSTEM SUMMARY")
-print("═" * 65)
-
-print(f"""
-Model Used        : {best_model_name}
-Prediction Engine : Active
-Explainable AI    : Enabled
-Visual Reports    : Generated
-Final Accuracy    : {best_acc:.2f}%
-
-SYSTEM STATUS     : READY
-""")
