@@ -1,15 +1,12 @@
-# =========================================================
-# STUDENT BURNOUT DETECTION SYSTEM
-# CLEAN + OPTIMIZED + HIGHER ACCURACY VERSION
-# =========================================================
-
 import os, warnings, joblib,numpy as np, pandas as pd, seaborn as sns, matplotlib.pyplot as plt
+from dotenv import load_dotenv
+import os
 
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, f1_score)
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import (RandomForestClassifier, GradientBoostingClassifier)
+from sklearn.ensemble import (RandomForestClassifier, HistGradientBoostingClassifier)
 from imblearn.over_sampling import SMOTE
 from xgboost import XGBClassifier
 from datetime import datetime
@@ -58,6 +55,18 @@ def save_plot(title, file):
     plt.show()
     plt.close()
 
+
+# =========================================================
+# LOAD DATA
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(SCRIPT_DIR, ".env"))
+
+BURNOUT_DATA_PATH = os.getenv("BURNOUT_DATA_PATH")
+
+df = pd.read_csv(BURNOUT_DATA_PATH)
+df = df.sample(n=50000, random_state=42)
+
 # =========================================================
 # SYSTEM BANNER
 # =========================================================
@@ -73,18 +82,8 @@ print("✔ Report Generation")
 print("✔ Visualization Dashboard")
 print("\nInitializing system...\n")
 
-# =========================================================
-# LOAD DATA
-# =========================================================
-DATA_PATH = os.environ.get(
-    "BURNOUT_DATA_PATH",
-    r"C:\Users\prana\Downloads\student_mental_health_burnout_1M.csv"
-)
 
-df = pd.read_csv(DATA_PATH).sample(
-    50000,
-    random_state=42
-)
+
 # =========================================================
 # PREPROCESSING
 # =========================================================
@@ -182,15 +181,15 @@ models = {
 ),
 
     "Gradient Boosting": (
-    GradientBoostingClassifier(
-    n_estimators=40,
-    learning_rate=0.1,
-    max_depth=2,
-    random_state=42
-),
+    HistGradientBoostingClassifier(
+        max_iter=40,
+        learning_rate=0.1,
+        max_depth=2,
+        random_state=42
+    ),
     False
-
 ),
+
     "XGBoost": (
     XGBClassifier(
         n_estimators=200,
@@ -211,20 +210,17 @@ models = {
 # =========================================================
 # TRAINING
 # =========================================================
-
+    
 results = {}
 f1_scores = {}
 
 for name, (model, scaled) in models.items():
-
     Xtr, Xte = (
         (X_train_scaled, X_test_scaled)
         if scaled else
         (X_train, X_test)
     )
-
     model.fit(Xtr, y_train)
-
     preds = model.predict(Xte)
 
     acc = accuracy_score(
