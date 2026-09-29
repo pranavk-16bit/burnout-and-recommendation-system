@@ -1,7 +1,7 @@
 import os, warnings, joblib,numpy as np, pandas as pd, seaborn as sns, matplotlib.pyplot as plt
 from dotenv import load_dotenv
 import os
-
+from burnout_core.scoring import burnout_status
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, f1_score)
@@ -372,21 +372,6 @@ def confidence_bar(conf):
         "█" * filled +
         "░" * (10 - filled)
     )
-
-def burnout_status(score):
-    thresholds = [
-
-    (1.5,"🟢 Stable"),
-
-    (2.3,"🟠 Watchlist")
-]
-
-    for limit, status in thresholds:
-
-        if score < limit:
-            return status
-
-    return "🔴 Critical"
     
 
 # =========================================================
@@ -770,19 +755,16 @@ def get_student_input():
     stress = max(1, 11 - mental_health)
 
     anxiety = max(1, round((11 - mental_health) * 0.9))
-
     depression = max(1, round((11 - mental_health) * 0.8))
-
     support = mental_health
-    
+
     activity = ask("Physical Activity Hours (0-6): ", 0, 6)
 
-    mental_health_score = (
-    mental_health
-    )
+    # NEW: ask these directly instead of copying other values
+    exam_pressure = ask("Exam Pressure Level (1-10): ", 1, 10, int)
+    internet_usage = ask("Internet Usage Hours Per Day (0-16): ", 0, 16)
 
     gender = ask_gender()
-
 
     student = {
         "age": 21,
@@ -794,10 +776,10 @@ def get_student_input():
         "anxiety_score": anxiety,
         "depression_score": depression,
         "social_support": support,
-        "exam_pressure": stress,
-        "internet_usage": screen,
+        "exam_pressure": exam_pressure,        # real value now
+        "internet_usage": internet_usage,      # real value now
         "physical_activity": activity,
-        "mental_health_score": mental_health_score,
+        "mental_health_score": mental_health,
         "financial_stress": 5,
         "family_expectation": 5,
         "academic_performance": 7,
