@@ -11,7 +11,16 @@ from imblearn.over_sampling import SMOTE
 from xgboost import XGBClassifier
 from datetime import datetime
 from sklearn.pipeline import make_pipeline
+from burnout_core.security.consent import show_consent_screen
+from burnout_core.security import storage as secure_storage
 
+# =========================================================
+# CONSENT CHECK
+# =========================================================
+
+if not show_consent_screen():
+    print("\nYou declined data tracking. Exiting.")
+    exit()
 
 # =========================================================
 # SETTINGS
@@ -1006,6 +1015,16 @@ save_history(
     burnout_status(burnout_score)
 
 )
+secure_storage.save_history("unused", {
+    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "burnout_score": float(burnout_score),
+    "risk_level": user_pred,
+    "confidence": float(user_conf),
+    "sleep_hours": float(user_student["sleep_hours"]),
+    "screen_time": float(user_student["screen_time"]),
+    "physical_activity": float(user_student["physical_activity"]),
+    "wellness": float(wellness)
+})
 burnout_trend()
 
 sleep_burnout_trend()
