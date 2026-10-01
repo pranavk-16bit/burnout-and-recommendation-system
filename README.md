@@ -808,6 +808,21 @@ The project evolved from a machine learning classifier into an AI-powered burnou
 - Early Warning Alerts
 - Wellness Visualization
 
+## 🔐 Privacy & Security
+
+This application handles sensitive student usage and
+burnout-related information.
+
+### Privacy principles
+
+- Local-first data storage
+- Encrypted local database
+- Explicit user consent
+- User-controlled data deletion
+- No third-party advertising analytics
+- Least-privilege device permissions
+- Environment variables for configuration/secrets
+- No sensitive data committed to GitHub
 
 ## 👨‍💻 Author
 
