@@ -1,6 +1,6 @@
 import time
 from datetime import datetime
-
+from burnout_core.app_config import config
 from .scheduler import load_schedule, is_focus_window
 from .overlay import show_intervention
 
@@ -35,7 +35,7 @@ class InterventionManager:
                 "Your burnout risk is critical. "
                 "Please take a proper break.",
                 level="Critical",
-                mandatory_seconds=10
+                mandatory_seconds=config["intervention"]["critical_mandatory_seconds"]
             )
 
         elif risk_level == "Watchlist":
@@ -44,7 +44,7 @@ class InterventionManager:
                 "Your burnout risk is increasing. "
                 "Take a short break and reset.",
                 level="Watchlist",
-                mandatory_seconds=60
+                mandatory_seconds=config["intervention"]["watchlist_mandatory_seconds"]
             )
 
         else:
