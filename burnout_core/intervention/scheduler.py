@@ -1,14 +1,14 @@
-import json
-from pathlib import Path
 from datetime import datetime
 
-
-CONFIG_PATH = Path("config/intervention.json")
+from burnout_core.app_config import config
 
 
 def load_schedule():
-    with open(CONFIG_PATH, "r") as file:
-        return json.load(file)
+    return {
+        "start_time": "09:00",
+        "end_time": "22:00",
+        "break_every_minutes": config["intervention"]["break_every_minutes"]
+    }
 
 
 def is_focus_window(schedule):
@@ -23,3 +23,4 @@ def is_focus_window(schedule):
     ).time()
 
     return start <= now <= end
+
