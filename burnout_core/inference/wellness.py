@@ -27,3 +27,9 @@ def compute_wellness(student):
         0,
         min(wellness, 10)
     )
+
+
+def apply_burnout_overrides(student, prediction):
+    if student["sleep_hours"] < 4 or student["screen_time"] > 12 or student["study_hours_per_day"] > 12:
+        return "High"
+    return prediction
