@@ -1,0 +1,25 @@
+scoring:
+  stable_threshold: 1.5
+  watchlist_threshold: 2.3
+
+constraints:
+  max_daily_hours: 24
+  max_study_hours: 16
+  max_screen_hours: 16
+  max_sleep_hours: 12
+  max_activity_hours: 6
+
+cache:
+  prediction_max_age_minutes: 30
+
+tracking:
+  burst_duration_seconds: 30
+  sample_interval_seconds: 5
+  sleep_between_minutes: 15
+  idle_limit_seconds: 60
+  min_internet_bytes: 250000
+
+intervention:
+  break_every_minutes: 50
+  critical_mandatory_seconds: 10
+  watchlist_mandatory_seconds: 60
