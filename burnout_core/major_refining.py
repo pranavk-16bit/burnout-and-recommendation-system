@@ -2,11 +2,12 @@ import os, warnings, joblib, json, numpy as np, pandas as pd, seaborn as sns, ma
 from dotenv import load_dotenv
 from pathlib import Path
 from datetime import datetime
-
+from burnout_core.app_config import config
 from burnout_core.scoring import burnout_status
 from burnout_core.security.consent import show_consent_screen
 from burnout_core.security import storage as secure_storage
 from burnout_core.features.engg_features import engineer_features
+from burnout_core.inference.wellness import compute_wellness, apply_burnout_overrides
 
 # =========================================================
 # CONSENT CHECK
@@ -32,7 +33,7 @@ MODEL_DIR.mkdir(exist_ok=True)
 REPORT_DIR.mkdir(exist_ok=True)
 VISUAL_DIR.mkdir(exist_ok=True)
 CACHE_PATH = REPORT_DIR / "last_prediction_cache.json"
-CACHE_MAX_AGE_MINUTES = 30
+CACHE_MAX_AGE_MINUTES = config["cache"]["prediction_max_age_minutes"]
 
 
 def load_cached_prediction():
@@ -518,15 +519,17 @@ def get_student_input():
     print("ENTER STUDENT DETAILS")
     print("=" * 40)
 
-    while True:
-        study = ask("Study Hours Per Day (0-16): ", 0, 16)
-        screen = ask("Screen Time Hours (0-16): ", 0, 16)
-        sleep = ask("Sleep Hours (0-12): ", 0, 12)
+    limits = config["constraints"]
 
-        if study + screen + sleep <= 24:
+    while True:
+        study = ask("Study Hours Per Day (0-16): ", 0, limits["max_study_hours"])
+        screen = ask("Screen Time Hours (0-16): ", 0, limits["max_screen_hours"])
+        sleep = ask("Sleep Hours (0-12): ", 0, limits["max_sleep_hours"])
+
+        if study + screen + sleep <= limits["max_daily_hours"]:
             break
         print(f"❌ Study + Screen + Sleep = {study+screen+sleep} hours, "
-              f"which exceeds 24 in a day. Please re-enter.")
+              f"which exceeds {limits['max_daily_hours']} in a day. Please re-enter.")
 
     mental_health = ask("Mental Health Score (1-10): ", 1, 10, int)
     stress = max(1, 11 - mental_health)
@@ -535,11 +538,9 @@ def get_student_input():
     depression = max(1, round((11 - mental_health) * 0.8))
     support = mental_health
 
-    activity = ask("Physical Activity Hours (0-6): ", 0, 6)
-
-    # NEW: ask these directly instead of copying other values
+    activity = ask("Physical Activity Hours (0-6): ", 0, limits["max_activity_hours"])
     exam_pressure = ask("Exam Pressure Level (1-10): ", 1, 10, int)
-    internet_usage = ask("Internet Usage Hours Per Day (0-16): ", 0, 16)
+    internet_usage = ask("Internet Usage Hours Per Day (0-16): ", 0, limits["max_screen_hours"])
 
     gender = ask_gender()
 
@@ -702,35 +703,13 @@ else:
         probs[2] * 3
     )
 
-
-def apply_burnout_overrides(student, prediction):
-    if student["sleep_hours"] < 4 or student["screen_time"] > 12 or student["study_hours_per_day"] > 12:
-        return "High"
-    return prediction
-
 user_pred = apply_burnout_overrides(user_student, user_pred)
-
-def compute_wellness(student):
-    sleep_component = min(student["sleep_hours"], 9) / 9        # 9hrs = ideal, capped
-    activity_component = min(student["physical_activity"], 5) / 5
-    support_component = student["social_support"] / 10
-    screen_penalty = min(student["screen_time"], 12) / 12        # more screen = worse
-
-    wellness = (
-        sleep_component * 4 +
-        activity_component * 3 +
-        support_component * 3 -
-        screen_penalty * 3
-    )
-    return max(0, min(wellness, 10))  # clamp to 0-10
 
 wellness = compute_wellness(user_student)
 
 if not cached:
     save_prediction_cache(user_student, user_pred, user_conf, probs, burnout_score, wellness)
 user_pred = apply_burnout_overrides(user_student, user_pred)
-
-
 
 
 burnout_indicator(
