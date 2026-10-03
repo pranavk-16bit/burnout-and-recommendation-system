@@ -1,18 +1,13 @@
-import os, warnings, joblib,numpy as np, pandas as pd, seaborn as sns, matplotlib.pyplot as plt
+import os, warnings, joblib, json, numpy as np, pandas as pd, seaborn as sns, matplotlib.pyplot as plt
 from dotenv import load_dotenv
-import os
-from burnout_core.scoring import burnout_status
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import (accuracy_score, f1_score)
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import (RandomForestClassifier, HistGradientBoostingClassifier)
-from imblearn.over_sampling import SMOTE
-from xgboost import XGBClassifier
+from pathlib import Path
 from datetime import datetime
-from sklearn.pipeline import make_pipeline
+from burnout_core.app_config import config
+from burnout_core.scoring import burnout_status
 from burnout_core.security.consent import show_consent_screen
 from burnout_core.security import storage as secure_storage
+from burnout_core.features.engg_features import engineer_features
+from burnout_core.inference.wellness import compute_wellness, apply_burnout_overrides
 
 # =========================================================
 # CONSENT CHECK
@@ -27,54 +22,88 @@ if not show_consent_screen():
 # =========================================================
 
 warnings.filterwarnings("ignore")
-from pathlib import Path
-for folder in map(Path, [
-    "reports",
-    "models",
-    "visuals"
-]):
-    folder.mkdir(exist_ok=True)
 
-sns.set_theme(
-    style="whitegrid",
-    palette="flare",
-    context="talk"
-)
+SCRIPT_DIR = Path(__file__).resolve().parent
+load_dotenv(SCRIPT_DIR / ".env")
 
-plt.rcParams["figure.figsize"] = (10,6)
+MODEL_DIR = SCRIPT_DIR / "models"
+REPORT_DIR = SCRIPT_DIR / "reports"
+VISUAL_DIR = SCRIPT_DIR / "visuals"
+MODEL_DIR.mkdir(exist_ok=True)
+REPORT_DIR.mkdir(exist_ok=True)
+VISUAL_DIR.mkdir(exist_ok=True)
+CACHE_PATH = REPORT_DIR / "last_prediction_cache.json"
+CACHE_MAX_AGE_MINUTES = config["cache"]["prediction_max_age_minutes"]
+
+
+def load_cached_prediction():
+    """Return the cached prediction if it's recent enough, else None."""
+
+    if not CACHE_PATH.exists():
+        return None
+
+    with open(CACHE_PATH) as f:
+        cache = json.load(f)
+
+    cached_time = datetime.strptime(cache["timestamp"], "%Y-%m-%d %H:%M:%S")
+    age_minutes = (datetime.now() - cached_time).total_seconds() / 60
+
+    if age_minutes > CACHE_MAX_AGE_MINUTES:
+        return None
+
+    return cache
+
+
+def save_prediction_cache(student, pred, conf, probs, score, wellness):
+    """Save the latest prediction so it can be reused if run again soon."""
+
+    cache = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "student": student,
+        "user_pred": pred,
+        "user_conf": float(conf),
+        "probs": [float(p) for p in probs],
+        "burnout_score": float(score),
+        "wellness": float(wellness)
+    }
+
+    with open(CACHE_PATH, "w") as f:
+        json.dump(cache, f, indent=2)
+
+        
+sns.set_theme(style="whitegrid", palette="flare", context="talk")
+plt.rcParams["figure.figsize"] = (10, 6)
+
+# =========================================================
+# LOAD TRAINED MODEL (no training happens here)
+# =========================================================
+
+print("Loading trained model...")
+
+best_model = joblib.load(MODEL_DIR / "burnout_model.pkl")
+scaler = joblib.load(MODEL_DIR / "scaler.pkl")
+feature_columns = joblib.load(MODEL_DIR / "features.pkl")
+
+with open(MODEL_DIR / "metadata.json") as f:
+    metadata = json.load(f)
+
+best_model_name = metadata["best_model_name"]
+best_acc = metadata["best_acc"]
+best_needs_scaling = metadata["needs_scaling"]
+
+top_features = pd.read_csv(REPORT_DIR / "feature_importance.csv").head(10)
+risk_correlation = pd.read_csv(REPORT_DIR / "risk_correlation.csv", index_col=0)["correlation"]
 
 # =========================================================
 # SAVE PLOT FUNCTION
 # =========================================================
 
 def save_plot(title, file):
-
-    plt.title(
-        title,
-        fontsize=18,
-        weight="bold"
-    )
-
+    plt.title(title, fontsize=18, weight="bold")
     plt.tight_layout()
-
-    plt.savefig(
-        f"visuals/{file}.png",
-        dpi=300
-    )
+    plt.savefig(VISUAL_DIR / f"{file}.png", dpi=300)
     plt.show()
     plt.close()
-
-
-# =========================================================
-# LOAD DATA
-
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-load_dotenv(os.path.join(SCRIPT_DIR, ".env"))
-
-BURNOUT_DATA_PATH = os.getenv("BURNOUT_DATA_PATH")
-
-df = pd.read_csv(BURNOUT_DATA_PATH)
-df = df.sample(n=50000, random_state=42)
 
 # =========================================================
 # SYSTEM BANNER
@@ -93,197 +122,22 @@ print("\nInitializing system...\n")
 
 
 
-# =========================================================
-# PREPROCESSING
-# =========================================================
-df.columns = df.columns.str.lower()
-df["risk_level"] = df["risk_level"].map({
-    "Low":0,
-    "Medium":1,
-    "High":2
-})
-df = pd.get_dummies(
-    df,
-    columns=["gender"],
-    drop_first=True
-)
-# =========================================================
-# FEATURE ENGINEERING
-# =========================================================
-def engineer_features(d):
-    d["stress_sleep_ratio"] = d["stress_level"] / (d["sleep_hours"] + 1)
-    d["mental_pressure"] = d["anxiety_score"] + d["depression_score"] + d["exam_pressure"]
-    d["wellness_score"] = d["physical_activity"] + d["social_support"] - d["stress_level"]
-    d["digital_overload"] = d["screen_time"] * d["internet_usage"]
-    d["sleep_quality"] = d["sleep_hours"] / (d["screen_time"] + 1)
-    d["stress_index"] = d["stress_level"] * d["exam_pressure"]
-    d["lifestyle_balance"] = d["physical_activity"] + d["social_support"] - d["screen_time"]
-    return d
-
-df = engineer_features(df)   # <-- this line was missing
-
-# =========================================================
-# FEATURES & TARGET
-# =========================================================
-X = df.drop([
-    "risk_level",
-    "burnout_score",
-    "mental_health_index",
-    "dropout_risk"
-], axis=1)
-
-y = df["risk_level"]
-
-
-# =========================================================
-# TRAIN TEST SPLIT
-# =========================================================
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.2,
-    stratify=y,
-    random_state=42
-)
-
-X_train = X_train.astype("float32")
-X_test = X_test.astype("float32")
-
-smote = SMOTE(random_state=42)
-
-X_train, y_train = smote.fit_resample(
-    X_train,
-    y_train
-)
-# =========================================================
-# SCALING
-# =========================================================
-
-scaler = StandardScaler()
-
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
-
-# =========================================================
-# MODELS
-# =========================================================
-
-models = {
-
-    "Logistic Regression": (
-        LogisticRegression(
-            max_iter=3000,
-            class_weight="balanced"
-        ),
-        True
-    ),
-
-    "Random Forest": (
-    RandomForestClassifier(
-    n_estimators=60,
-    max_depth=10,
-    n_jobs=-1,
-    random_state=42
-),
-    False
-),
-
-    "Gradient Boosting": (
-    HistGradientBoostingClassifier(
-        max_iter=40,
-        learning_rate=0.1,
-        max_depth=2,
-        random_state=42
-    ),
-    False
-),
-
-    "XGBoost": (
-    XGBClassifier(
-        n_estimators=200,
-        max_depth=6,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        eval_metric="mlogloss",
-        random_state=42
-    ),
-    False
-)
-}
 
 
 
 
-# =========================================================
-# TRAINING
-# =========================================================
-    
-results = {}
-f1_scores = {}
-
-for name, (model, scaled) in models.items():
-    Xtr, Xte = (
-        (X_train_scaled, X_test_scaled)
-        if scaled else
-        (X_train, X_test)
-    )
-    model.fit(Xtr, y_train)
-    preds = model.predict(Xte)
-
-    acc = accuracy_score(
-        y_test,
-        preds
-    )
-
-    f1 = f1_score(
-        y_test,
-        preds,
-        average="weighted"
-    )
-
-    results[name] = acc
-    f1_scores[name] = f1
-
-
-
-# =========================================================
-# BEST MODEL SELECTION
-# =========================================================
-
-best_model_name = max(
-    f1_scores,
-    key=f1_scores.get
-)
-
-best_model = models[
-    best_model_name
-][0]
-files = {
-    "burnout_model.pkl": best_model,
-    "scaler.pkl": scaler,
-    "features.pkl": X.columns.tolist()
-}
-
-for name, obj in files.items():
-    joblib.dump(obj, f"models/{name}")
-
-# CROSS VALIDATION
-best_needs_scaling = models[best_model_name][1]
-cv_pipeline = make_pipeline(StandardScaler(), best_model) if best_needs_scaling else best_model
-scores = cross_val_score(cv_pipeline, X_train, y_train, cv=5)
 
 
 
 
-best_acc = results[
-    best_model_name
-] * 100
+
+
 
 # Clean training summary
 
-print("MODEL TRAINING COMPLETED")
+# Model summary
+
+print("MODEL LOADED")
 print("────────────────────────")
 
 print(
@@ -293,33 +147,6 @@ print(
 print(
     f"Accuracy   : {best_acc:.2f}%\n"
 )
-
-predictions = best_model.predict(X_test)
-
-
-f1 = f1_score(
-    y_test,
-    predictions,
-    average="weighted"
-)
-
-# =========================================================
-# FEATURE IMPORTANCE DATA
-# =========================================================
-
-if hasattr(best_model, "feature_importances_"):
-    importances = best_model.feature_importances_
-elif hasattr(best_model, "coef_"):
-    importances = np.abs(best_model.coef_).mean(axis=0)
-else:
-    importances = np.zeros(len(X.columns))
-importance_df = pd.DataFrame({"Feature": X.columns, "Importance": importances}).sort_values("Importance", ascending=False)
-top_features = importance_df.head(10)
-
-importance_df.to_csv(
-    "reports/feature_importance.csv",
-    index=False
-    )
 
 
 
@@ -343,7 +170,7 @@ def predict_student(student_data):
 
     # Add missing columns automatically
     input_df = input_df.reindex(
-        columns=X.columns,
+        columns=feature_columns,
         fill_value=0
 )
     
@@ -390,7 +217,7 @@ def confidence_bar(conf):
 def save_report(prediction, confidence):
 
     with open(
-        "reports/student_report.txt",
+        REPORT_DIR / "student_report.txt",
         "w"
     ) as f:
 
@@ -443,63 +270,6 @@ def save_report(prediction, confidence):
 # HISTORY TRACKING
 # =========================================================
 
-def save_history(score,prediction,confidence,student,wellness,monitoring):
-    history_file = (
-        "reports/student_history.csv"
-    )
-
-    new_data = pd.DataFrame({
-
-    "date":[
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ],
-
-    "burnout_score":[score],
-
-    "risk_level":[prediction],
-
-    "confidence":[confidence],
-
-    "sleep_hours":[
-        student["sleep_hours"]
-    ],
-
-    "screen_time":[
-        student["screen_time"]
-    ],
-
-    "physical_activity":[
-        student["physical_activity"]
-    ],
-
-    "wellness":[wellness],
-
-    "monitoring":[monitoring]
-
-})
-    if os.path.exists(history_file):
-
-        old = pd.read_csv(
-            history_file
-        )
-
-        updated = pd.concat(
-            [old, new_data],
-            ignore_index=True
-        )
-
-    else:
-
-        updated = new_data
-
-    updated.to_csv(
-        history_file,
-        index=False
-    )
-    updated.to_excel(
-    "reports/student_history.xlsx",
-    index=False
-)
 
 def burnout_trend():
 
@@ -547,7 +317,7 @@ def burnout_trend():
     plt.tight_layout()
 
     plt.savefig(
-        "visuals/burnout_trend.png",
+        VISUAL_DIR / "burnout_trend.png",
         dpi=300
     )
 
@@ -619,7 +389,7 @@ def sleep_burnout_trend():
     plt.tight_layout()
 
     plt.savefig(
-        "visuals/sleep_burnout_trend.png",
+        VISUAL_DIR / "sleep_burnout_trend.png",
         dpi=300
     )
 
@@ -628,9 +398,16 @@ def sleep_burnout_trend():
 
 def load_history():
 
-    history = pd.read_csv(
-        "reports/student_history.csv"
-    )
+    records = secure_storage.load_history()
+
+    if not records:
+        return pd.DataFrame(columns=[
+            "date", "burnout_score", "risk_level", "confidence",
+            "sleep_hours", "screen_time", "physical_activity",
+            "wellness", "monitoring"
+        ])
+
+    history = pd.DataFrame(records)
 
     history["risk_level"] = (
         history["risk_level"]
@@ -642,19 +419,11 @@ def load_history():
 
 def early_warning():
 
-    history_file = (
-        "reports/student_history.csv"
-    )
-
-    if not os.path.exists(history_file):
-        return
-
     history = load_history()
 
     if len(history) < 7:
         return
 
-    history = load_history()
     current_score = history[
         "burnout_score"
     ].iloc[-1]
@@ -750,15 +519,17 @@ def get_student_input():
     print("ENTER STUDENT DETAILS")
     print("=" * 40)
 
-    while True:
-        study = ask("Study Hours Per Day (0-16): ", 0, 16)
-        screen = ask("Screen Time Hours (0-16): ", 0, 16)
-        sleep = ask("Sleep Hours (0-12): ", 0, 12)
+    limits = config["constraints"]
 
-        if study + screen + sleep <= 24:
+    while True:
+        study = ask("Study Hours Per Day (0-16): ", 0, limits["max_study_hours"])
+        screen = ask("Screen Time Hours (0-16): ", 0, limits["max_screen_hours"])
+        sleep = ask("Sleep Hours (0-12): ", 0, limits["max_sleep_hours"])
+
+        if study + screen + sleep <= limits["max_daily_hours"]:
             break
         print(f"❌ Study + Screen + Sleep = {study+screen+sleep} hours, "
-              f"which exceeds 24 in a day. Please re-enter.")
+              f"which exceeds {limits['max_daily_hours']} in a day. Please re-enter.")
 
     mental_health = ask("Mental Health Score (1-10): ", 1, 10, int)
     stress = max(1, 11 - mental_health)
@@ -767,11 +538,9 @@ def get_student_input():
     depression = max(1, round((11 - mental_health) * 0.8))
     support = mental_health
 
-    activity = ask("Physical Activity Hours (0-6): ", 0, 6)
-
-    # NEW: ask these directly instead of copying other values
+    activity = ask("Physical Activity Hours (0-6): ", 0, limits["max_activity_hours"])
     exam_pressure = ask("Exam Pressure Level (1-10): ", 1, 10, int)
-    internet_usage = ask("Internet Usage Hours Per Day (0-16): ", 0, 16)
+    internet_usage = ask("Internet Usage Hours Per Day (0-16): ", 0, limits["max_screen_hours"])
 
     gender = ask_gender()
 
@@ -882,7 +651,7 @@ def burnout_dashboard(student):
     plt.tight_layout()
 
     plt.savefig(
-        "visuals/burnout_dashboard.png",
+        VISUAL_DIR / "burnout_dashboard.png",
         dpi=300
     )
 
@@ -892,104 +661,55 @@ def burnout_dashboard(student):
 
 def risk_factor_relationships():
 
-    correlation = df[[
-        "stress_level",
-        "sleep_hours",
-        "screen_time",
-        "wellness_score",
-        "risk_level"
-    ]].corr()["risk_level"]
+    correlation = risk_correlation.sort_values()
 
-    correlation = correlation.drop(
-        "risk_level"
-    )
+    plt.figure(figsize=(10, 5))
 
-    correlation = correlation.sort_values()
+    colors = ["green" if x < 0 else "crimson" for x in correlation.values]
 
-    plt.figure(figsize=(10,5))
+    plt.barh(correlation.index, correlation.values, color=colors)
+    plt.axvline(x=0, color="black", linewidth=1)
+    plt.xlabel("Correlation With Burnout Risk")
 
-    colors = [
-        "green" if x < 0 else "crimson"
-        for x in correlation.values
-    ]
-
-    plt.barh(
-        correlation.index,
-        correlation.values,
-        color=colors
-    )
-
-    plt.axvline(
-        x=0,
-        color="black",
-        linewidth=1
-    )
-
-    plt.xlabel(
-        "Correlation With Burnout Risk"
-    )
-
-    plt.title(
-        "Risk Factor Relationships",
-        fontsize=16,
-        weight="bold"
-    )
-
+    plt.title("Risk Factor Relationships", fontsize=16, weight="bold")
     plt.tight_layout()
-
-    plt.savefig(
-        "visuals/risk_factor_relationships.png",
-        dpi=300
-    )
-
+    plt.savefig(VISUAL_DIR / "risk_factor_relationships.png", dpi=300)
     plt.show()
-
     plt.close()
+    
 # =========================================================
 # INTERACTIVE PREDICTION
 # =========================================================
 
 
-user_student = get_student_input()
+cached = load_cached_prediction()
 
-user_pred, user_conf, probs = predict_student(
-    user_student
-)
-burnout_score = (
+if cached:
+    print(f"\nUsing cached prediction from {cached['timestamp']} (less than {CACHE_MAX_AGE_MINUTES} min old).")
+    user_student = cached["student"]
+    user_pred = cached["user_pred"]
+    user_conf = cached["user_conf"]
+    probs = np.array(cached["probs"])
+    burnout_score = cached["burnout_score"]
+else:
+    user_student = get_student_input()
 
-    probs[0] * 1 +
-
-    probs[1] * 2 +
-
-    probs[2] * 3
-
-)
-def apply_burnout_overrides(student, prediction):
-    if student["sleep_hours"] < 4 or student["screen_time"] > 12 or student["study_hours_per_day"] > 12:
-        return "High"
-    return prediction
-
-user_pred = apply_burnout_overrides(user_student, user_pred)
-
-def compute_wellness(student):
-    sleep_component = min(student["sleep_hours"], 9) / 9        # 9hrs = ideal, capped
-    activity_component = min(student["physical_activity"], 5) / 5
-    support_component = student["social_support"] / 10
-    screen_penalty = min(student["screen_time"], 12) / 12        # more screen = worse
-
-    wellness = (
-        sleep_component * 4 +
-        activity_component * 3 +
-        support_component * 3 -
-        screen_penalty * 3
+    user_pred, user_conf, probs = predict_student(
+        user_student
     )
-    return max(0, min(wellness, 10))  # clamp to 0-10
-
-wellness = compute_wellness(user_student)   # <-- this line replaces your old inline formula
+    burnout_score = (
+        probs[0] * 1 +
+        probs[1] * 2 +
+        probs[2] * 3
+    )
 
 user_pred = apply_burnout_overrides(user_student, user_pred)
 
+wellness = compute_wellness(user_student)
 
+if not cached:
+    save_prediction_cache(user_student, user_pred, user_conf, probs, burnout_score, wellness)
+user_pred = apply_burnout_overrides(user_student, user_pred)
 
 
 burnout_indicator(
@@ -1000,31 +720,18 @@ burnout_dashboard(
 )
 risk_factor_relationships()
 
-save_history(
-
-    burnout_score,
-
-    user_pred,
-
-    user_conf,
-
-    user_student,
-
-    wellness,
-
-    burnout_status(burnout_score)
-
-)
-secure_storage.save_history("unused", {
-    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    "burnout_score": float(burnout_score),
-    "risk_level": user_pred,
-    "confidence": float(user_conf),
-    "sleep_hours": float(user_student["sleep_hours"]),
-    "screen_time": float(user_student["screen_time"]),
-    "physical_activity": float(user_student["physical_activity"]),
-    "wellness": float(wellness)
-})
+if not cached:
+    secure_storage.save_history("unused", {
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "burnout_score": float(burnout_score),
+        "risk_level": user_pred,
+        "confidence": float(user_conf),
+        "sleep_hours": float(user_student["sleep_hours"]),
+        "screen_time": float(user_student["screen_time"]),
+        "physical_activity": float(user_student["physical_activity"]),
+        "wellness": float(wellness),
+        "monitoring": burnout_status(burnout_score)
+    })
 burnout_trend()
 
 sleep_burnout_trend()
