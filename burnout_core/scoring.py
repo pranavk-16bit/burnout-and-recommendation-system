@@ -1,7 +1,10 @@
+from burnout_core.app_config import config
+
+
 def burnout_status(score):
     thresholds = [
-        (1.5, "Stable"),
-        (2.3, "Watchlist")
+        (config["scoring"]["stable_threshold"], "Stable"),
+        (config["scoring"]["watchlist_threshold"], "Watchlist")
     ]
 
     for limit, status in thresholds:
