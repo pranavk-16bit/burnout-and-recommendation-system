@@ -3,7 +3,7 @@ import json
 import time
 from datetime import date
 from pathlib import Path
-
+from burnout_core.app_config import config
 import psutil
 import win32api
 import win32gui
@@ -72,8 +72,12 @@ def is_using_internet(pid):
     return False
 
 
-def collect_usage(duration=60, interval=5, idle_limit=60,
-                  min_bytes=250_000):
+def collect_usage(
+    duration=config["tracking"]["burst_duration_seconds"],
+    interval=config["tracking"]["sample_interval_seconds"],
+    idle_limit=config["tracking"]["idle_limit_seconds"],
+    min_bytes=config["tracking"]["min_internet_bytes"]
+):
     """
     Track screen and internet seconds per app.
     Idle time is not counted. An interval counts as internet
